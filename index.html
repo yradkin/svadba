@@ -597,7 +597,7 @@ async function syncPush(){
   SY.busy=true;const sent={};keys.forEach(k=>sent[k]=SY.pending[k]);
   const bodies={};keys.forEach(k=>bodies[k]=JSON.stringify(bodyOf(k)));
   try{const pr=await api('push',{docs:keys.map(k=>({key:k,body:JSON.parse(bodies[k])}))});keys.forEach(k=>{SY.meta[k]={by:SY.me?SY.me.name:'',at:pr.now,del:bodies[k]==='null'};SY.srv[k]=bodies[k];if(SY.pending[k]===sent[k])delete SY.pending[k];});saveMeta();savePending();SY.okAt=Date.now();SY.state='ok';}
-  catch(e){SY.state='err';SY.err=e.code||'net';if(e.code==='read_only'){SY.pending={};savePending();setRole('viewer');SY.state='ok';toast('У вас доступ только для просмотра.');}if(e.code==='not_member'){SY.on=false;SY.ready=false;SY.state='noaccess';lsSet('wedding-shared','');}}
+  catch(e){SY.state='err';SY.err=e.code||'net';if(e.code==='mass_delete'){SY.pending={};savePending();SY.state='ok';resyncAll();toast('Нельзя удалить так много сразу — данные возвращены.');}if(e.code==='read_only'){SY.pending={};savePending();setRole('viewer');SY.state='ok';toast('У вас доступ только для просмотра.');}if(e.code==='not_member'){SY.on=false;SY.ready=false;SY.state='noaccess';lsSet('wedding-shared','');}}
   finally{SY.busy=false;}
   updSync();if(Object.keys(SY.pending).length&&SY.state==='ok'){clearTimeout(SY.pt);SY.pt=setTimeout(syncPush,1500);}}
 async function syncPull(){
@@ -607,6 +607,7 @@ async function syncPull(){
     if(docs.length){docs.forEach(d=>setBody(d.key,d.body));saveLocal();refreshAfterSync();}}
   catch(e){SY.state='err';SY.err=e.code||'net';}
   finally{SY.pulling=false;}updSync();}
+async function resyncAll(){try{const r=await api('pull',{since:0});const docs={};r.docs.forEach(d=>{if(d.body)docs[d.key]=d.body;});st.vendors={};st.guests={};applyDocs(docs);noteMeta(r.docs);SY.since=r.now-1000;saveLocal();refreshAfterSync();}catch(e){}}
 function refreshAfterSync(){
   if(drag)return;render();
   if(sheet.hidden)return;
@@ -645,6 +646,26 @@ function shareCard(){if(!(TGA&&SYNC_URL))return '';if(SY.ready&&!ownerUI())retur
   else if(SY.ro)h+='<p class="small muted" style="margin:10px 0 0">У вас доступ только для просмотра. Чтобы вносить изменения, попросите организатора дать права редактора.</p>';
   return h+'</section>';}
 function refreshHello(){if(!SY.ready)return;api('hello').then(h=>{if(!h.member){SY.on=false;SY.ready=false;SY.state='noaccess';lsSet('wedding-shared','');setRole('');updSync();refreshShareUI();toast('Доступ к общему планеру закрыт.');return;}SY.members=h.members||SY.members;SY.owner=!!h.owner;const was=SY.ro;setRole(h.role||'editor');if(was!==SY.ro){render();toast(SY.ro?'Теперь у вас доступ только для просмотра.':'Теперь вы можете редактировать.');}refreshShareUI();}).catch(()=>{});}
+function protectCard(){if(!(SY.ready&&ownerUI()))return '';
+  return '<section class="card"><div class="h"><h2>Защита данных</h2></div><p class="small" style="margin:0 0 10px;color:var(--txt-2)">Все прошлые версии и удалённое хранятся. Каждую ночь делается резервная копия.</p><div class="row"><button type="button" class="btn sm" data-act="trash">Корзина</button><button type="button" class="btn sm" data-act="backups">Резервные копии</button><button type="button" class="btn sm" data-hist="tasks">История чек-листа</button><button type="button" class="btn sm" data-hist="cfg">История настроек</button></div></section>';}
+function docTitle(k,b){if(k==='cfg')return 'Настройки и бюджет';if(k==='tasks')return 'Чек-лист';if(k.indexOf('v_')===0){const v=b&&b.v;return v?(v.name||'Без названия')+' · '+catName(v.cat).toLowerCase():'Подрядчик';}if(k.indexOf('g_')===0){const g=b&&b.g;return 'Гость: '+(g&&g.name||'без имени');}return k;}
+function docSummary(k,b){try{if(k==='tasks'){const t=b.tasks||[];return t.length+' '+plural(t.length,'задача','задачи','задач')+', выполнено '+t.filter(x=>x.done).length;}
+  if(k==='cfg'){const c=b.cfg||{};return [c.budget?'бюджет '+c.budget:'',c.date?fmtD(c.date):'',c.menuA?'меню '+c.menuA+'/'+(c.menuK||0):''].filter(Boolean).join(' · ')||'настройки';}
+  if(k.indexOf('v_')===0){const v=b.v;return [STN[v.status]||'',v.price?v.price+' '+CUR[v.cur||base()]:'',(v.pays||[]).length?(v.pays.length+' '+plural(v.pays.length,'платёж','платежа','платежей')):''].filter(Boolean).join(' · ');}
+  if(k.indexOf('g_')===0){const g=b.g;return [g.ok?'точно будет':'ждём ответа',g.kid?'ребёнок':''].filter(Boolean).join(' · ');}}catch(e){}return '';}
+function loadingSheet(title){openSheet(top(title)+'<div class="stack"><section class="card"><div class="empty">Загружаю…</div></section></div>');}
+function afterRestore(msg){SY.since=0;syncPull().then(()=>{render();toast(msg);});}
+async function openTrash(){loadingSheet('Корзина');try{const r=await api('trash');SY.trash=r.items||[];
+  openSheet(top('Корзина')+'<div class="stack">'+(SY.trash.length?'<section class="card"><div class="list">'+SY.trash.map((it,i)=>'<div class="li" style="cursor:default"><span class="dot"></span><div><div class="t">'+esc(docTitle(it.key,it.body))+'</div><div class="s">удалил(а) '+esc(it.by||'—')+' · '+fmtAgo(it.deletedAt)+'</div></div><div class="r"><button type="button" class="btn sm" data-untrash="'+i+'">Вернуть</button></div></div>').join('')+'</div></section><p class="small muted" style="margin:0">Здесь всё, что удалили за последние полгода. Фото удалённых карточек лежат в корзине Google Диска 30 дней.</p>':'<section class="card"><div class="empty">Корзина пуста — ничего не удаляли.</div></section>')+'</div>');}
+  catch(e){openSheet(top('Корзина')+'<div class="stack"><section class="card"><div class="empty">Не получилось загрузить. Проверьте интернет и что скрипт на Google обновлён.</div></section></div>');}}
+async function openVersions(key){const title='История: '+docTitle(key,bodyOf(key)).replace(/ · .*/,'');loadingSheet(title);
+  try{const r=await api('versions',{key});SY.vers={key,items:r.items||[]};const cur=bodyOf(key);
+    openSheet(top('История')+'<div class="stack"><p class="small muted" style="margin:0">'+esc(docTitle(key,cur))+'. Сейчас: '+esc(docSummary(key,cur))+'</p>'+(SY.vers.items.length?'<section class="card"><div class="list">'+SY.vers.items.map((it,i)=>'<div class="li" style="cursor:default"><span class="dot"></span><div><div class="t">'+fmtAgo(it.at)+' · '+esc(it.by||'—')+'</div><div class="s">'+esc(docSummary(key,it.body))+'<br>заменил(а) '+esc(it.replacedBy||'—')+' · '+fmtAgo(it.replacedAt)+'</div></div><div class="r"><button type="button" class="btn sm" data-restorev="'+i+'">Вернуть</button></div></div>').join('')+'</div></section>':'<section class="card"><div class="empty">Прошлых версий пока нет.</div></section>')+'</div>');}
+  catch(e){openSheet(top('История')+'<div class="stack"><section class="card"><div class="empty">Не получилось загрузить. Проверьте интернет и что скрипт на Google обновлён.</div></section></div>');}}
+async function openBackups(){loadingSheet('Резервные копии');try{const r=await api('backups');SY.bk=r.items||[];
+  openSheet(top('Резервные копии')+'<div class="stack"><div class="row"><button type="button" class="btn primary sm" data-act="backupnow">Сделать копию сейчас</button></div>'+(SY.bk.length?'<section class="card"><div class="list">'+SY.bk.map((it,i)=>'<div class="li" style="cursor:default"><span class="dot ok"></span><div><div class="t">'+esc(it.name.replace(/^Копия /,'').replace(/\.json$/,''))+'</div><div class="s">'+Math.max(1,Math.round(it.size/1024))+' КБ</div></div><div class="r"><button type="button" class="btn sm" data-restoreb="'+i+'">Восстановить</button></div></div>').join('')+'</div></section>':'<section class="card"><div class="empty">Копий пока нет. Первая появится этой ночью или по кнопке выше.</div></section>')+
+   '<p class="small muted" style="margin:0">Копии лежат файлами в папке «Свадьба — резервные копии» на Google Диске. Перед восстановлением автоматически сохраняется копия текущего состояния — откат тоже можно отменить.</p></div>');}
+  catch(e){openSheet(top('Резервные копии')+'<div class="stack"><section class="card"><div class="empty">Не получилось загрузить. Проверьте интернет и что скрипт на Google обновлён и setup выполнен ещё раз.</div></section></div>');}}
 function refreshShareUI(){const el=$('#shareCard');if(el)el.outerHTML=shareCard();}
 function startSync(){if(!TGA||!SYNC_URL)return;
   Object.keys(JSON.parse(lsGet('wedding-pending')||'[]').reduce((o,k)=>(o[k]=1,o),{})).forEach(k=>{SY.pending[k]=++SY.seq;});
@@ -859,7 +880,7 @@ function teamHTML(){
       (vs.length?vs.map(vendorRow).join(''):'<div class="empty">Пока никого. Добавьте варианты, чтобы сравнить цены и условия.</div>')+
       '<div style="padding-top:8px"><button type="button" class="btn sm ghost" data-add="'+k+'">+ '+(vs.length?'Ещё вариант':'Добавить')+'</button></div></div></section>';
   });
-  const dv=demoVendors();if(dv.length)h='<section class="card" style="padding:14px 16px"><div class="row" style="justify-content:space-between;flex-wrap:nowrap"><span class="small" style="color:var(--txt-2)">Сейчас здесь '+dv.length+' '+plural(dv.length,'пример','примера','примеров')+'. Уберите их, когда начнёте вносить своих.</span><button type="button" class="btn sm" data-act="rmdemo">Убрать примеры</button></div></section>'+h;
+  const dv=demoVendors();if(dv.length&&!(SY.ready&&!ownerUI()))h='<section class="card" style="padding:14px 16px"><div class="row" style="justify-content:space-between;flex-wrap:nowrap"><span class="small" style="color:var(--txt-2)">Сейчас здесь '+dv.length+' '+plural(dv.length,'пример','примера','примеров')+'. Уберите их, когда начнёте вносить своих.</span><button type="button" class="btn sm" data-act="rmdemo">Убрать примеры</button></div></section>'+h;
   h+='<div class="row"><button type="button" class="btn" data-act="addsec">+ Свой раздел</button><button type="button" class="btn ghost" data-act="sections">Настроить разделы</button></div>';
   if(teamFilter==='all')h+='<p class="small muted" style="margin:0">Подрядчиков в статусе «Договорились», «Договор» и «Оплачено» учитываем в бюджете. Варианты в поиске в суммы не входят.</p>';
   return h;
@@ -985,7 +1006,7 @@ function openVendor(id,fresh){
   const act=(k,ic,lbl)=>'<button type="button" class="iconbtn" data-cact="'+k+'" aria-label="'+lbl+'" title="'+lbl+'">'+ic+'</button>';
   let h='<div class="sheet-top"><button type="button" class="iconbtn" data-close aria-label="Назад">'+ICON.back+'</button><span class="ttl">'+esc(catName(v.cat))+'</span><button type="button" class="iconbtn" data-vdel aria-label="Удалить">'+ICON.del+'</button></div>';
   h+='<div class="stack"><input class="title" id="vf-name" data-vf="name" value="'+esc(v.name)+'" placeholder="Имя или студия" autocomplete="off">';
-  const vm=SY.ready&&ownerUI()&&SY.meta['v_'+v.id];if(vm&&vm.at)h+='<div class="changed">Изменено: '+esc(vm.by||'—')+', '+fmtAgo(vm.at)+'</div>';
+  const vm=SY.ready&&ownerUI()&&SY.meta['v_'+v.id];if(vm&&vm.at)h+='<div class="changed">Изменено: '+esc(vm.by||'—')+', '+fmtAgo(vm.at)+' · <button type="button" class="tbtn" style="padding:0;font-size:12px" data-hist="v_'+v.id+'">история</button></div>';
   h+='<div class="statuses" role="group" aria-label="Статус">'+STATUS.map(([k,l])=>'<button type="button" class="st'+(k==='no'?' no':'')+'" data-status="'+k+'" aria-pressed="'+(v.status===k)+'">'+l+'</button>').join('')+'</div>';
   const curSel=(attr,val)=>'<select class="cur" '+attr+' aria-label="Валюта">'+CURS.map(k=>'<option value="'+k+'"'+(val===k?' selected':'')+'>'+CUR[k]+'</option>').join('')+'</select>';
   h+='<section class="card"><div class="h"><h2>Деньги</h2><span id="vmoneyPill"></span></div><div class="grid2"><div class="fld"><label for="vf-price">Стоимость по договорённости</label><div class="withcur"><input id="vf-price" data-vf="price" type="number" inputmode="decimal" value="'+esc(v.price||'')+'" placeholder="0" autocomplete="off">'+curSel('data-vcur',vc(v))+'</div></div><div class="fld"><label>Внесено / осталось</label><div id="vmoney" class="num" style="min-height:44px;display:flex;flex-wrap:wrap;align-items:center;font-weight:700;font-size:16px"></div></div></div><div id="vfx"></div><div class="bar" id="vbar"></div></section>';
@@ -1036,7 +1057,7 @@ function openSettings(){refreshHello();
    '<section class="card"><div class="h"><h2>Свадьба</h2></div><div class="stack" style="gap:10px"><div class="grid2">'+f('n1','Имя','text','Марина')+f('n2','Имя','text','Олег')+'</div><div class="grid2">'+f('date','Дата свадьбы','date')+f('city','Город','text','Гомель')+'</div><div class="grid2">'+f('budget','Бюджет','number','0')+f('guests','Гостей','number','0')+'</div>'+
    '</div></section>'+ratesCard()+
    '<section class="card"><div class="h"><h2>Оформление</h2></div><div class="seg" role="group" aria-label="Тема">'+[['auto','Как в системе'],['light','Светлая'],['dark','Тёмная']].map(([k,l])=>'<button type="button" data-theme-set="'+k+'" aria-pressed="'+((localTheme()||'auto')===k)+'">'+l+'</button>').join('')+'</div></section>'+
-   shareCard()+'<section class="card"><div class="h"><h2>Данные</h2></div><div class="row"><button type="button" class="btn sm" data-act="copyjson">Скопировать резервную копию</button><button type="button" class="btn sm" data-act="pastejson">Вставить из копии</button></div><div class="fld" id="pasteBox" hidden style="margin-top:10px"><label for="pasteArea">Вставьте текст резервной копии</label><textarea id="pasteArea"></textarea><div class="row" style="margin-top:8px"><button type="button" class="btn primary sm" data-act="doimport">Загрузить</button></div></div></section>'+
+   shareCard()+protectCard()+'<section class="card"><div class="h"><h2>Данные</h2></div><div class="row"><button type="button" class="btn sm" data-act="copyjson">Скопировать резервную копию</button>'+(SY.ready&&!ownerUI()?'':'<button type="button" class="btn sm" data-act="pastejson">Вставить из копии</button>')+'</div><div class="fld" id="pasteBox" hidden style="margin-top:10px"><label for="pasteArea">Вставьте текст резервной копии</label><textarea id="pasteArea"></textarea><div class="row" style="margin-top:8px"><button type="button" class="btn primary sm" data-act="doimport">Загрузить</button></div></div></section>'+
    (hasData()?'<section class="card"><div class="h"><h2>Пример</h2></div><div class="row"><button type="button" class="btn sm" data-act="demo">Заполнить примером</button>'+(SY.ready&&!ownerUI()?'':'<button type="button" class="btn sm danger" data-act="wipe">Удалить всё</button>')+'</div></section>':'')+
    '</div>');
 }
@@ -1078,6 +1099,10 @@ document.addEventListener('click',e=>{
       const v=st.vendors[lb.vid];const im=v&&v.imgs[lb.i];if(!im)return;delImage(lb.vid,im.id).then(()=>{renderImgs();if(!v.imgs.length)closeLb();else{lb.i=Math.min(lb.i,v.imgs.length-1);drawLb();}toast('Фото удалено.');});}
     return;}
   if(SY.ro&&t.closest('[data-tasktoggle],[data-paytoggle],[data-add],[data-newcat],[data-status],[data-addpay],[data-ptoggle],[data-pdel],[data-atoggle],[data-adel],[data-addagree],[data-sugg],[data-contract],[data-vdel],[data-vfxnow],[data-secshow],[data-secdel],[data-gok],[data-gkid],[data-gsw],[data-gside],[data-tdel1],[data-drag],[data-act="demo"],[data-act="wipe"],[data-act="addsec"],[data-act="rmdemo"],[data-act="todoedit"],[data-act="gdel"],[data-act="tdel"],[data-act="tdreset"],[data-act="ratesnow"],[data-ratesauto],[data-act="gbulk"],[data-act="gbulkadd"],[data-act="doimport"],[data-act="pastejson"],[data-theme-set="x"]')){toast('У вас доступ только для просмотра.');return;}
+  if((el=t.closest('[data-hist]'))){openVersions(el.dataset.hist);return;}
+  if((el=t.closest('[data-untrash]'))){const it=(SY.trash||[])[+el.dataset.untrash];if(!it)return;el.disabled=true;api('restore',{key:it.key,at:it.at}).then(()=>{setBody(it.key,it.body);saveLocal();openTrash();afterRestore('Вернули: '+docTitle(it.key,it.body)+'.');}).catch(()=>{el.disabled=false;toast('Не получилось вернуть, проверьте интернет.');});return;}
+  if((el=t.closest('[data-restorev]'))){const it=SY.vers&&SY.vers.items[+el.dataset.restorev];if(!it)return;const key=SY.vers.key;confirmBox({title:'Вернуть эту версию?',text:'Текущее состояние сохранится в истории, его тоже можно будет вернуть.',ok:'Вернуть',onOk:()=>{api('restore',{key,at:it.at}).then(()=>{setBody(key,it.body);saveLocal();closeSheet();afterRestore('Версия возвращена.');}).catch(()=>toast('Не получилось, проверьте интернет.'));}});return;}
+  if((el=t.closest('[data-restoreb]'))){const it=(SY.bk||[])[+el.dataset.restoreb];if(!it)return;confirmBox({title:'Восстановить копию?',text:'Все данные у всех участников станут как в копии «'+esc(it.name.replace(/\.json$/,''))+'». Текущее состояние перед этим сохранится отдельной копией.',protect:true,ok:'Восстановить',onOk:()=>{toast('Восстанавливаю…');api('restore_backup',{id:it.id}).then(()=>{SY.since=0;api('pull',{since:0}).then(r=>{const docs={};r.docs.forEach(d=>{if(d.body)docs[d.key]=d.body;});st.vendors={};st.guests={};applyDocs(docs);noteMeta(r.docs);SY.since=r.now-1000;saveLocal();closeSheet();render();toast('Данные восстановлены из копии.');});}).catch(()=>toast('Не получилось, проверьте интернет.'));}});return;}
   if((el=t.closest('[data-pv]'))){PV=el.dataset.pv;setRole(SY.role);closeSheet();tab='home';render();window.scrollTo(0,0);return;}
   if((el=t.closest('[data-close]'))){closeSheet();return;}
   if((el=t.closest('[data-gok]'))){const g=st.guests[el.dataset.gok];if(g){g.ok=!g.ok;if(g.ok)g.no=false;haptic(g.ok?'ok':'');persist('g',g.id);render();}return;}
@@ -1111,6 +1136,9 @@ document.addEventListener('click',e=>{
     if(a==='settings')openSettings();
     else if(a==='addsec')openSections(true);
     else if(a==='pvexit'){PV='';setRole(SY.role);render();toast('Вы снова организатор.');}
+    else if(a==='trash')openTrash();
+    else if(a==='backups')openBackups();
+    else if(a==='backupnow'){el.disabled=true;api('backup_now').then(r=>{toast(r.name?'Копия сохранена.':'Готово.');openBackups();}).catch(()=>{el.disabled=false;toast('Не получилось, проверьте интернет.');});}
     else if(a==='todoedit'){todoEdit=!todoEdit;render();}
     else if(a==='gbulk'){const b=$('#gBulkBox');if(b){b.hidden=!b.hidden;if(!b.hidden)$('#gBulk').focus();}}
     else if(a==='gbulkadd'){const ta=$('#gBulk');const added=addGuests((ta.value||'').split(/\n+/));if(added.length){render();toast('Добавлено гостей: '+added.length+'.');}}
@@ -1129,7 +1157,7 @@ document.addEventListener('click',e=>{
     else if(a==='wipe'){confirmBox({title:'Удалить всё?',text:'Удалятся подрядчики, платежи, гости, фото и чек-лист'+(SY.ready?' — у всех участников':'')+'. Вернуть будет нельзя.',protect:true,ok:'Удалить всё',onOk:()=>{vendorsArr().forEach(removeVendor);Object.keys(st.guests).forEach(id=>{delete st.guests[id];persist('g',id);});const keepDate=st.cfg.date;st.cfg={n1:st.cfg.n1,n2:st.cfg.n2,date:keepDate,city:'',currency:'BYN',budget:0,guests:0};st.tasks=[];ensureTasks();persist('cfg');persist('tasks');closeSheet();render();toast('Все данные удалены.');}});}
     else if(a==='copyjson')copy(JSON.stringify({app:'wedding',v:1,data:st}));
     else if(a==='pastejson'){$('#pasteBox').hidden=false;$('#pasteArea').focus();}
-    else if(a==='doimport'){try{const j=JSON.parse($('#pasteArea').value);if(!j||j.app!=='wedding')throw 0;const old=Object.keys(st.vendors);st=normalize(j.data);old.forEach(id=>{if(!st.vendors[id])flush('v',id);});ensureTasks();pushAll();closeSheet();render();toast('Данные загружены.');}catch(err){toast('Не похоже на резервную копию этого приложения.');}}
+    else if(a==='doimport'){let j;try{j=JSON.parse($('#pasteArea').value);if(!j||j.app!=='wedding')throw 0;}catch(err){toast('Не похоже на резервную копию этого приложения.');return;}confirmBox({title:'Заменить всё копией?',text:'Текущие подрядчики, гости и чек-лист заменятся данными из копии'+(SY.ready?' у всех участников':'')+'.',protect:true,ok:'Заменить',onOk:()=>{const oldV=Object.keys(st.vendors),oldG=Object.keys(st.guests);st=normalize(j.data);oldV.forEach(id=>{if(!st.vendors[id])persist('v',id);});oldG.forEach(id=>{if(!st.guests[id])persist('g',id);});ensureTasks();pushAll();closeSheet();render();toast('Данные загружены.');}});}
     return;}
   if((el=t.closest('[data-theme-set]'))){const k=el.dataset.themeSet;try{if(k==='auto')localStorage.removeItem('wedding-theme');else localStorage.setItem('wedding-theme',k);}catch(err){}
     if(k==='auto'){if(TGA)document.documentElement.setAttribute('data-theme',TGA.colorScheme==='dark'?'dark':'light');else document.documentElement.removeAttribute('data-theme');}else document.documentElement.setAttribute('data-theme',k);tgColors();
@@ -1196,7 +1224,16 @@ document.addEventListener('submit',e=>{if(e.target.id==='secForm'){e.preventDefa
   if(e.target.id==='addTask'){e.preventDefault();const t=$('#newTask').value.trim();if(!t)return;st.tasks.push({id:uid(),t,off:null,due:$('#newTaskDate').value||'',done:false,custom:true});persist('tasks');render();}});
 
 /* ---------- Старт ---------- */
-loadLocal();ensureTasks();render();initStore().then(autoRates,autoRates);
+function crashScreen(err){try{console.error(err);}catch(e){}
+  if(document.getElementById('crash'))return;const el=document.createElement('div');el.id='crash';el.className='modal';
+  el.innerHTML='<div class="modal-in"><h3>Что-то пошло не так</h3><p>Данные на сервере в порядке. Попробуйте перезагрузить. Если не поможет — сбросьте копию на этом телефоне: всё подтянется заново'+(SY.on?' с сервера':'')+'.</p><div class="row" style="justify-content:flex-end"><button type="button" class="btn" id="crashReset">Сбросить на телефоне</button><button type="button" class="btn primary" id="crashReload">Перезагрузить</button></div></div>';
+  document.body.appendChild(el);
+  el.querySelector('#crashReload').onclick=()=>location.reload();
+  el.querySelector('#crashReset').onclick=()=>{if(!SY.on&&!confirm('Данные хранятся только на этом устройстве и удалятся. Продолжить?'))return;try{['wedding-v1','wedding-pending','wedding-meta'].forEach(k=>localStorage.removeItem(k));}catch(e){}location.reload();};}
+const _render=render;render=function(){try{_render();}catch(e){crashScreen(e);}};
+window.addEventListener('error',e=>{if(e&&e.message&&/Script error/.test(e.message))return;if(!view.innerHTML.trim())crashScreen(e.error||e.message);else try{console.error(e.error||e.message);}catch(_){}});
+try{loadLocal();ensureTasks();}catch(e){try{localStorage.removeItem('wedding-v1');}catch(_){}st=normalize({});ensureTasks();}
+render();initStore().then(autoRates,autoRates).catch(crashScreen);
 })();
 </script>
 
