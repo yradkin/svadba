@@ -658,7 +658,7 @@ function docSummary(k,b){try{if(k==='tasks'){const t=b.tasks||[];return t.length
 function loadingSheet(title){openSheet(top(title)+'<div class="stack"><section class="card"><div class="empty">Загружаю…</div></section></div>');}
 function afterRestore(msg){SY.since=0;syncPull().then(()=>{render();toast(msg);});}
 async function openLog(){loadingSheet('Журнал изменений');try{const r=await api('log',{limit:200});const it=r.items||[];
-  openSheet(top('Журнал изменений')+'<div class="stack"><div class="row"><button type="button" class="btn primary sm" data-act="logpdf">Скачать PDF</button></div>'+(it.length?'<section class="card"><div class="list">'+it.map(x=>'<div class="li" style="cursor:default"><span class="dot acc"></span><div><div class="t">'+esc(x.title)+'</div><div class="s" style="color:var(--txt-2)">'+esc(x.what)+'</div><div class="s">'+esc(x.by||'—')+' · '+fmtAgo(x.at)+'</div></div><div class="r"></div></div>').join('')+'</div></section>':'<section class="card"><div class="empty">Изменений пока нет. Журнал ведётся с момента обновления скрипта.</div></section>')+'</div>');}
+  openSheet(top('Журнал изменений')+'<div class="stack">'+(it.length?'<section class="card"><div class="list">'+it.map(x=>'<div class="li" style="cursor:default"><span class="dot acc"></span><div><div class="t">'+esc(x.title)+'</div><div class="s" style="color:var(--txt-2)">'+esc(x.what)+'</div><div class="s">'+esc(x.by||'—')+' · '+fmtAgo(x.at)+'</div></div><div class="r"></div></div>').join('')+'</div></section>':'<section class="card"><div class="empty">Изменений пока нет. Журнал ведётся с момента обновления скрипта.</div></section>')+'</div>');}
   catch(e){openSheet(top('Журнал изменений')+'<div class="stack"><section class="card"><div class="empty">Не получилось загрузить. Проверьте интернет и что скрипт на Google обновлён.</div></section></div>');}}
 async function openTrash(){loadingSheet('Корзина');try{const r=await api('trash');SY.trash=r.items||[];
   openSheet(top('Корзина')+'<div class="stack">'+(SY.trash.length?'<section class="card"><div class="list">'+SY.trash.map((it,i)=>'<div class="li" style="cursor:default"><span class="dot"></span><div><div class="t">'+esc(docTitle(it.key,it.body))+'</div><div class="s">удалил(а) '+esc(it.by||'—')+' · '+fmtAgo(it.deletedAt)+'</div></div><div class="r"><button type="button" class="btn sm" data-untrash="'+i+'">Вернуть</button></div></div>').join('')+'</div></section><p class="small muted" style="margin:0">Здесь всё, что удалили за последние полгода. Фото удалённых карточек лежат в корзине Google Диска 30 дней.</p>':'<section class="card"><div class="empty">Корзина пуста — ничего не удаляли.</div></section>')+'</div>');}
@@ -1062,7 +1062,7 @@ function openSettings(){refreshHello();
    '<section class="card"><div class="h"><h2>Свадьба</h2></div><div class="stack" style="gap:10px"><div class="grid2">'+f('n1','Имя','text','Марина')+f('n2','Имя','text','Олег')+'</div><div class="grid2">'+f('date','Дата свадьбы','date')+f('city','Город','text','Гомель')+'</div><div class="grid2">'+f('budget','Бюджет','number','0')+f('guests','Гостей','number','0')+'</div>'+
    '</div></section>'+ratesCard()+
    '<section class="card"><div class="h"><h2>Оформление</h2></div><div class="seg" role="group" aria-label="Тема">'+[['auto','Как в системе'],['light','Светлая'],['dark','Тёмная']].map(([k,l])=>'<button type="button" data-theme-set="'+k+'" aria-pressed="'+((localTheme()||'auto')===k)+'">'+l+'</button>').join('')+'</div></section>'+
-   shareCard()+protectCard()+'<section class="card"><div class="h"><h2>Данные</h2></div><div class="row"><button type="button" class="btn sm" data-act="copyjson">Скопировать резервную копию</button>'+(SY.ready&&!ownerUI()?'':'<button type="button" class="btn sm" data-act="pastejson">Вставить из копии</button>')+'</div><div class="fld" id="pasteBox" hidden style="margin-top:10px"><label for="pasteArea">Вставьте текст резервной копии</label><textarea id="pasteArea"></textarea><div class="row" style="margin-top:8px"><button type="button" class="btn primary sm" data-act="doimport">Загрузить</button></div></div></section>'+
+   shareCard()+protectCard()+'<section class="card"><div class="h"><h2>Данные</h2></div>'+((SY.ready&&ownerUI())||!TGA?'<div style="margin-bottom:10px"><button type="button" class="btn primary sm" data-act="pdfall">Скачать PDF со всеми данными</button></div>':'')+'<div class="row"><button type="button" class="btn sm" data-act="copyjson">Скопировать резервную копию</button>'+(SY.ready&&!ownerUI()?'':'<button type="button" class="btn sm" data-act="pastejson">Вставить из копии</button>')+'</div><div class="fld" id="pasteBox" hidden style="margin-top:10px"><label for="pasteArea">Вставьте текст резервной копии</label><textarea id="pasteArea"></textarea><div class="row" style="margin-top:8px"><button type="button" class="btn primary sm" data-act="doimport">Загрузить</button></div></div></section>'+
    (hasData()?'<section class="card"><div class="h"><h2>Пример</h2></div><div class="row"><button type="button" class="btn sm" data-act="demo">Заполнить примером</button>'+(SY.ready&&!ownerUI()?'':'<button type="button" class="btn sm danger" data-act="wipe">Удалить всё</button>')+'</div></section>':'')+
    '</div>');
 }
@@ -1076,6 +1076,66 @@ function ratesCard(){const auto=RT.ratesMode!=='manual';
    '<div><button type="button" class="btn sm" data-act="ratesnow">Обновить курс сейчас</button></div>'+
    '<p class="small muted" style="margin:0">Это курс на сегодня. Когда вы вводите цену или платёж в валюте, курс фиксируется на этот день и дальше не меняется — его видно и можно поправить в карточке подрядчика. Если поменять курс здесь вручную, автообновление выключится.</p></div></section>';}
 function refreshRatesUI(){const el=$('#ratesCard');if(el)el.outerHTML=ratesCard();}
+
+/* ---------- Отчёт со всеми данными (PDF) ---------- */
+function buildReport(){
+  const c=st.cfg,t=totals(),gs=guestStats(),names=[c.n1,c.n2].filter(Boolean).join(' & ')||'Свадьба';
+  const d=daysTo(c.date),now=new Date();
+  const e=esc,row=(a)=>'<tr>'+a.map(x=>'<td>'+x+'</td>').join('')+'</tr>';
+  const mC=(n,cur)=>e(moneyC(n,cur));
+  let h='<html><head><meta charset="utf-8"><style>'+
+   'body{font-family:Arial,Helvetica,sans-serif;font-size:10pt;color:#1c1426;line-height:1.35}'+
+   'h1{font-family:Georgia,serif;font-weight:normal;font-size:24pt;margin:0;color:#5c1f4a}'+
+   'h2{font-size:13pt;margin:22px 0 8px;padding-bottom:4px;border-bottom:2px solid #d9c6e2;color:#5c1f4a}'+
+   'h3{font-size:11pt;margin:14px 0 4px}'+
+   '.m{color:#6a5a72}.s{font-size:9pt;color:#6a5a72}.ok{color:#1a8758}.bad{color:#c03550}'+
+   'table{width:100%;border-collapse:collapse;margin:4px 0 8px}th{text-align:left;font-size:8.5pt;color:#6a5a72;border-bottom:1.5px solid #c9b8d4;padding:4px 5px}td{vertical-align:top;border-bottom:1px solid #eee3f2;padding:4px 5px}'+
+   '.kv td:first-child{color:#6a5a72;width:250px}.num{text-align:right;white-space:nowrap}.v{border:1px solid #e3d6ea;border-radius:8px;padding:8px 10px;margin:8px 0}'+
+   '</style></head><body>';
+  h+='<h1>'+e(names)+'</h1><div class="m">'+(c.date?e(fmtDL(c.date)):'Дата не выбрана')+(c.city?' · '+e(c.city):'')+(d!=null&&d>0?' · до свадьбы '+d+' '+plural(d,'день','дня','дней'):'')+'</div>'+
+     '<div class="s">Отчёт сформирован '+now.toLocaleDateString('ru-RU')+' '+now.toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'})+'. Суммы в '+e(base())+'.</div>';
+  // деньги
+  h+='<h2>Деньги</h2><table class="kv">'+row(['Бюджет',t.budget?e(money(t.budget)):'не задан'])+row(['Договорено (выбранные подрядчики)',e(money(t.contracted))])+row(['Внесено','<span class="ok">'+e(money(t.paid))+'</span>'])+row(['Осталось внести',e(money(t.left))])+
+     (t.budget&&t.contracted>t.budget?row(['Превышение бюджета','<span class="bad">'+e(money(t.contracted-t.budget))+'</span>']):'')+
+     (c.menuA?row(['Банкет по подтвердившим',e(money(menuCost(gs.okA,gs.okK)))])+row(['Банкет, если придут все',e(money(menuCost(gs.adults,gs.kids)))]):'')+'</table>';
+  const ur=usedRates();if(ur.length)h+='<div class="s">Курс сегодня: '+e(ur.map(rateTxt).join(' · '))+'. Суммы в валюте пересчитаны по курсу на день ввода.</div>';
+  // подрядчики
+  h+='<h2>Подрядчики</h2>';
+  let anyV=false;
+  pickCats().forEach(([k,name])=>{const vs=vendorsArr().filter(v=>v.cat===k);if(!vs.length)return;anyV=true;
+    vs.sort((a,b)=>(CHOSEN(b.status)?1:0)-(CHOSEN(a.status)?1:0));
+    h+='<h3>'+e(name)+'</h3>';
+    vs.forEach(v=>{const s2=vStats(v);
+      h+='<div class="v"><b>'+e(v.name||'Без названия')+'</b> — '+e(STN[v.status]||'')+(v.contract?' · договор подписан'+(v.contractDate?' '+e(fmtD(v.contractDate)):''):'')+
+        '<table class="kv">'+(s2.price?row(['Стоимость',mC(s2.price,s2.cur)+(s2.cur!==base()?' <span class="s">'+e(approx(s2.price,s2.cur,vfx(v)))+'</span>':'')])+row(['Внесено / осталось','<span class="ok">'+mC(s2.paid,s2.cur)+'</span> / '+mC(s2.left,s2.cur)]):'')+
+        (v.person?row(['Контакт',e(v.person)]):'')+(v.phone?row(['Телефон',e(v.phone)]):'')+(v.tg?row(['Telegram',e(v.tg)]):'')+(v.ig?row(['Instagram',e(v.ig)]):'')+(v.email?row(['Почта',e(v.email)]):'')+(v.link?row(['Сайт',e(v.link)]):'')+(v.contractLink?row(['Файл договора',e(v.contractLink)]):'')+
+        ((v.imgs||[]).length?row(['Фото',(v.imgs.length)+' шт. (в приложении)']):'')+'</table>';
+      if(v.pays.length)h+='<table><tr><th>Платёж</th><th class="num">Сумма</th><th>Срок</th><th>Статус</th></tr>'+v.pays.map(p=>{const cu=pc(p,v);return row([e(p.title||'Платёж'),'<span class="num">'+mC(p.amount,cu)+'</span>',p.due?e(fmtD(p.due)):'—',p.paid?'<span class="ok">внесено'+(p.paidAt?' '+e(fmtD(p.paidAt)):'')+'</span>':(daysTo(p.due)!=null&&daysTo(p.due)<0?'<span class="bad">просрочено</span>':'ждёт')]);}).join('')+'</table>';
+      if(v.agree.length)h+='<div class="s" style="margin-top:4px">Договорённости:</div><ul style="margin:2px 0 4px 18px;padding:0">'+v.agree.map(a=>'<li>'+e(a.t)+(a.inContract?' <span class="ok">✓ в договоре</span>':'')+'</li>').join('')+'</ul>';
+      if(v.notes)h+='<div class="s">Заметки: '+e(v.notes)+'</div>';
+      h+='</div>';});});
+  if(!anyV)h+='<div class="m">Подрядчиков пока нет.</div>';
+  // платежи
+  const ps=allPays();const up=ps.filter(x=>!x.p.paid).sort((a,b)=>(a.d==null?1e9:a.d)-(b.d==null?1e9:b.d));const pd=ps.filter(x=>x.p.paid);
+  h+='<h2>График платежей</h2>'+(up.length?'<table><tr><th>Срок</th><th>Подрядчик</th><th>Платёж</th><th class="num">Сумма</th></tr>'+up.map(x=>row([x.p.due?e(fmtD(x.p.due))+(x.d<0?' <span class="bad">просрочено</span>':''):'без даты',e(x.v.name||catName(x.v.cat)),e(x.p.title||'Платёж'),'<span class="num">'+mC(x.p.amount,pc(x.p,x.v))+'</span>'])).join('')+'</table>':'<div class="m">Неоплаченных платежей нет.</div>')+
+     (pd.length?'<h3>Уже внесено</h3><table>'+pd.map(x=>row([x.p.paidAt?e(fmtD(x.p.paidAt)):'',e(x.v.name||catName(x.v.cat)),e(x.p.title||'Платёж'),'<span class="num">'+mC(x.p.amount,pc(x.p,x.v))+'</span>'])).join('')+'</table>':'');
+  // гости
+  const gl=Object.values(st.guests).sort((a,b)=>(a.created||0)-(b.created||0));
+  h+='<h2>Гости</h2><div>Приглашено: <b>'+gs.all+'</b> (+ жених и невеста) · точно будут: <b class="ok">'+gs.ok+'</b> · ждём ответа: '+gs.wait+' · детей: '+gs.kids+(gs.no?' · не придут: '+gs.no:'')+'</div>';
+  if(c.menuA)h+='<div class="s">Меню: взрослый '+e(money(c.menuA))+', ребёнок '+e(money(c.menuK||0))+'. По подтвердившим: '+(gs.okA+2)+' взр. + '+gs.okK+' дет. = <b>'+e(money(menuCost(gs.okA,gs.okK)))+'</b>; если придут все: '+e(money(menuCost(gs.adults,gs.kids)))+'.</div>';
+  if(gl.length)h+='<table><tr><th>#</th><th>Имя</th><th>Статус</th><th></th><th>Сторона</th><th>Телефон / заметка</th></tr>'+gl.map((g,i)=>row([String(i+1),e(g.name||''),g.no?'<span class="bad">не придёт</span>':g.ok?'<span class="ok">точно будет</span>':'ждём ответа',g.kid?'ребёнок':'',e(g.side&&SIDES[g.side]?SIDES[g.side].replace('сторона ',''):''),e([g.phone,g.note].filter(Boolean).join(' · '))])).join('')+'</table>';
+  // чек-лист
+  const tl=st.cfg.todoMode==='manual'?st.tasks.slice():st.tasks.slice().sort((a,b)=>(taskDue(a)||'9')<(taskDue(b)||'9')?-1:1);const dn=st.tasks.filter(x=>x.done).length;
+  h+='<h2>Чек-лист · выполнено '+dn+' из '+st.tasks.length+'</h2><table><tr><th></th><th>Задача</th><th>Срок</th></tr>'+tl.map(x=>{const du=taskDue(x),dd=daysTo(du);return row([x.done?'<span class="ok">✓</span>':'☐',(x.done?'<span class="m">':'')+e(x.t)+(x.done?'</span>':''),du?e(fmtD(du))+(!x.done&&dd!=null&&dd<0?' <span class="bad">просрочено</span>':''):''])}).join('')+'</table>';
+  return h+'</body></html>';}
+function exportPDF(btn){
+  const html=buildReport();const nm='Свадьба '+[st.cfg.n1,st.cfg.n2].filter(Boolean).join(' и ');
+  if(SY.ready&&SY.owner){if(btn){btn.disabled=true;btn.dataset.lbl=btn.textContent;btn.textContent='Готовлю PDF…';}
+    api('pdf',{html,name:nm}).then(r=>{openUrl(r.url);toast('PDF готов и сохранён на Google Диске в папке «Свадьба — резервные копии».');})
+      .catch(e=>toast(e.code==='bad_op'?'Обновите скрипт на Google, чтобы сделать PDF.':'Не получилось сделать PDF, проверьте интернет.'))
+      .finally(()=>{if(btn){btn.disabled=false;btn.textContent=btn.dataset.lbl;}});return;}
+  if(!TGA){const w=window.open('','_blank');if(w){w.document.write(html.replace('</body>','<script>setTimeout(()=>print(),400)<\/script></body>'));w.document.close();return;}}
+  toast('PDF можно сделать после подключения общего доступа.');}
 
 /* ---------- Пример ---------- */
 function loadDemo(){
@@ -1144,6 +1204,7 @@ document.addEventListener('click',e=>{
     else if(a==='pvexit'){PV='';setRole(SY.role);render();toast('Вы снова организатор.');}
     else if(a==='trash')openTrash();
     else if(a==='changelog')openLog();
+    else if(a==='pdfall')exportPDF(el);
     else if(a==='logpdf'){el.disabled=true;el.textContent='Готовлю PDF…';api('report_pdf').then(r=>{el.disabled=false;el.textContent='Скачать PDF';openUrl(r.url);toast('PDF сохранён на Google Диске в папке с резервными копиями.');}).catch(()=>{el.disabled=false;el.textContent='Скачать PDF';toast('Не получилось сделать PDF, проверьте интернет.');});}
     else if(a==='backups')openBackups();
     else if(a==='backupnow'){el.disabled=true;api('backup_now').then(r=>{toast(r.name?'Копия сохранена.':'Готово.');openBackups();}).catch(()=>{el.disabled=false;toast('Не получилось, проверьте интернет.');});}
