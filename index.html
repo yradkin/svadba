@@ -1226,7 +1226,7 @@ document.addEventListener('submit',e=>{if(e.target.id==='secForm'){e.preventDefa
 /* ---------- Старт ---------- */
 function crashScreen(err){try{console.error(err);}catch(e){}
   if(document.getElementById('crash'))return;const el=document.createElement('div');el.id='crash';el.className='modal';
-  el.innerHTML='<div class="modal-in"><h3>Что-то пошло не так</h3><p>Данные на сервере в порядке. Попробуйте перезагрузить. Если не поможет — сбросьте копию на этом телефоне: всё подтянется заново'+(SY.on?' с сервера':'')+'.</p><div class="row" style="justify-content:flex-end"><button type="button" class="btn" id="crashReset">Сбросить на телефоне</button><button type="button" class="btn primary" id="crashReload">Перезагрузить</button></div></div>';
+  el.innerHTML='<div class="modal-in"><h3>Что-то пошло не так</h3><p>Данные на сервере в порядке. Попробуйте перезагрузить. Если не поможет — сбросьте копию на этом телефоне: всё подтянется заново'+(SY.on?' с сервера':'')+'.</p><p class="small muted" style="word-break:break-word">Код ошибки: '+esc(String(err&&(err.message||err)||'?').slice(0,180))+'</p><div class="row" style="justify-content:flex-end"><button type="button" class="btn" id="crashReset">Сбросить на телефоне</button><button type="button" class="btn primary" id="crashReload">Перезагрузить</button></div></div>';
   document.body.appendChild(el);
   el.querySelector('#crashReload').onclick=()=>location.reload();
   el.querySelector('#crashReset').onclick=()=>{if(!SY.on&&!confirm('Данные хранятся только на этом устройстве и удалятся. Продолжить?'))return;try{['wedding-v1','wedding-pending','wedding-meta'].forEach(k=>localStorage.removeItem(k));}catch(e){}location.reload();};}
