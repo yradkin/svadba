@@ -572,7 +572,8 @@ function docBody(kind,id){if(kind==='cfg')return {cfg:st.cfg};if(kind==='tasks')
 function persist(kind,id){const key=docKey(kind,id);saveLocal();S.pending[key]=true;clearTimeout(S.timers[key]);S.timers[key]=setTimeout(()=>flush(kind,id),600);}
 /* ---------- Общий доступ: сервер Google Apps Script организатора ---------- */
 const SYNC_URL='https://script.google.com/macros/s/AKfycby1BaazmNVmkiC1WWk-xfnRHIdEadPDTtbdx72JZGPsvE_lAErvhNxii2K2QaXX3p_-/exec';
-const SY={role:'',ro:false,meta:{},seenAt:0,on:false,ready:false,state:'',err:'',me:null,owner:false,members:[],bot:'',since:0,pending:{},seq:0,busy:false,pulling:false,okAt:0,pt:0};
+let PV='';const ownerUI=()=>SY.owner&&!PV;
+const SY={tick:0,role:'',ro:false,meta:{},seenAt:0,on:false,ready:false,state:'',err:'',me:null,owner:false,members:[],bot:'',since:0,pending:{},seq:0,busy:false,pulling:false,okAt:0,pt:0};
 const lsGet=k=>{try{return localStorage.getItem(k);}catch(e){return null;}};
 const lsSet=(k,v)=>{try{if(v)localStorage.setItem(k,v);else localStorage.removeItem(k);}catch(e){}};
 async function api(op,data){
@@ -586,9 +587,9 @@ SY.seenAt=+(lsGet('wedding-seen')||0);lsSet('wedding-seen',String(Date.now()));
 SY.srv={};
 function saveMeta(){try{localStorage.setItem('wedding-meta',JSON.stringify(SY.meta));}catch(e){}}
 function noteMeta(docs){(docs||[]).forEach(d=>{if(d&&d.key){SY.meta[d.key]={by:d.by||'',at:+d.at||0,del:!d.body};SY.srv[d.key]=JSON.stringify(d.body);}});saveMeta();}
-const isFresh=k=>{const m=SY.meta[k];return !!(SY.ready&&SY.owner&&m&&m.at>SY.seenAt&&SY.me&&m.by&&m.by!==SY.me.name);};
+const isFresh=k=>{const m=SY.meta[k];return !!(SY.ready&&ownerUI()&&m&&m.at>SY.seenAt&&SY.me&&m.by&&m.by!==SY.me.name);};
 function fmtAgo(at){if(!at)return '';const d=Date.now()-at;if(d<60e3)return 'только что';if(d<3600e3)return Math.round(d/60e3)+' мин назад';const t=new Date(at);const hm=t.toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'});return (ymd(t)===ymd(today())?'сегодня':fmtD(ymd(t)))+', '+hm;}
-function setRole(r){SY.role=r||'';SY.ro=SY.ready&&SY.role==='viewer';document.body.classList.toggle('ro',SY.ro);}
+function setRole(r){SY.role=r||'';SY.ro=SY.ready&&(SY.role==='viewer'||PV==='viewer');document.body.classList.toggle('ro',SY.ro);}
 function savePending(){lsSet('wedding-pending',Object.keys(SY.pending).length?JSON.stringify(Object.keys(SY.pending)):'');}
 function queueKey(k){SY.pending[k]=++SY.seq;savePending();clearTimeout(SY.pt);SY.pt=setTimeout(syncPush,400);updSync();}
 async function syncPush(){
@@ -634,13 +635,13 @@ function syncText(){if(SY.state==='noaccess')return 'Нет доступа к о
   if(SY.state==='err')return 'Нет связи с сервером. Изменения сохранены на телефоне и отправятся позже.';
   const n=Object.keys(SY.pending).length;if(n||SY.busy)return 'Отправляю изменения…';
   return 'Всё синхронизировано'+(SY.okAt?' · '+new Date(SY.okAt).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'}):'');}
-function shareCard(){if(!(TGA&&SYNC_URL))return '';if(SY.ready&&!SY.owner)return '';
+function shareCard(){if(!(TGA&&SYNC_URL))return '';if(SY.ready&&!ownerUI())return '';
   let h='<section class="card" id="shareCard"><div class="h"><h2>Общий доступ</h2>'+(SY.ready?'<span class="pill p-good">включён</span>':'')+'</div>';
   if(SY.state==='noaccess')return h+'<p class="small" style="margin:0;color:var(--txt-2)">Нет доступа к общему планеру. Откройте ссылку-приглашение в Telegram.</p></section>';
   h+='<p class="small" id="syncStatus" style="margin:0 0 10px;color:var(--txt-2)">'+esc(syncText())+'</p>';
   if(!SY.ready)return h+'<button type="button" class="btn sm" data-act="syncretry">Повторить</button></section>';
   h+='<div class="list">'+SY.members.map(m=>'<div class="li" style="cursor:default"><span class="mono" style="width:34px;height:34px;font-size:12px">'+esc(monoOf(m.name))+'</span><div><div class="t">'+esc(m.name)+(SY.me&&m.id===SY.me.id?' <span class="muted" style="font-weight:500">(вы)</span>':'')+'</div><div class="s">'+(m.owner?'организатор':m.role==='viewer'?'только просмотр':'редактор')+'</div>'+(SY.owner&&!m.owner?'<div class="row" style="margin-top:6px;gap:6px"><div class="seg" role="group" aria-label="Права">'+[['editor','Редактор'],['viewer','Просмотр']].map(([r,l])=>'<button type="button" data-role="'+m.id+'|'+r+'" aria-pressed="'+((m.role||'editor')===r)+'">'+l+'</button>').join('')+'</div><button type="button" class="btn sm ghost" data-kick="'+m.id+'">Убрать</button></div>':'')+'</div><div class="r"></div></div>').join('')+'</div>';
-  if(SY.owner)h+='<div class="row" style="margin-top:10px"><button type="button" class="btn primary sm" data-act="invite" data-irole="editor">Пригласить редактора</button><button type="button" class="btn sm" data-act="invite" data-irole="viewer">Пригласить для просмотра</button></div><div id="inviteBox" hidden style="margin-top:10px"></div><p class="small muted" style="margin:10px 0 0">Редактор может всё менять, «просмотр» — только смотреть. Ссылка одноразовая и действует неделю, для каждого человека своя. Права можно поменять в любой момент.</p>';
+  if(SY.owner)h+='<div class="row" style="margin-top:10px"><button type="button" class="btn primary sm" data-act="invite" data-irole="editor">Пригласить редактора</button><button type="button" class="btn sm" data-act="invite" data-irole="viewer">Пригласить для просмотра</button></div><div id="inviteBox" hidden style="margin-top:10px"></div><div class="row" style="margin-top:12px"><button type="button" class="btn sm ghost" data-pv="editor">Глазами редактора</button><button type="button" class="btn sm ghost" data-pv="viewer">Глазами зрителя</button></div><p class="small muted" style="margin:10px 0 0">Редактор может всё менять, «просмотр» — только смотреть. Ссылка одноразовая и действует неделю, для каждого человека своя. Права можно поменять в любой момент.</p>';
   else if(SY.ro)h+='<p class="small muted" style="margin:10px 0 0">У вас доступ только для просмотра. Чтобы вносить изменения, попросите организатора дать права редактора.</p>';
   return h+'</section>';}
 function refreshHello(){if(!SY.ready)return;api('hello').then(h=>{if(!h.member){SY.on=false;SY.ready=false;SY.state='noaccess';lsSet('wedding-shared','');setRole('');updSync();refreshShareUI();toast('Доступ к общему планеру закрыт.');return;}SY.members=h.members||SY.members;SY.owner=!!h.owner;const was=SY.ro;setRole(h.role||'editor');if(was!==SY.ro){render();toast(SY.ro?'Теперь у вас доступ только для просмотра.':'Теперь вы можете редактировать.');}refreshShareUI();}).catch(()=>{});}
@@ -649,7 +650,7 @@ function startSync(){if(!TGA||!SYNC_URL)return;
   Object.keys(JSON.parse(lsGet('wedding-pending')||'[]').reduce((o,k)=>(o[k]=1,o),{})).forEach(k=>{SY.pending[k]=++SY.seq;});
   if(lsGet('wedding-shared')==='1'){SY.on=true;mode='shared';}
   updSync();syncConnect();
-  setInterval(()=>{if(document.hidden)return;if(!SY.ready){if(SY.on||SY.state==='err')syncConnect();return;}syncPull();syncPush();uploadPendingImgs();},20000);
+  setInterval(()=>{if(document.hidden)return;if(!SY.ready){if(SY.on||SY.state==='err')syncConnect();return;}syncPull();if(++SY.tick%3===0)refreshHello();syncPush();uploadPendingImgs();},20000);
   document.addEventListener('visibilitychange',()=>{if(document.hidden)return;if(SY.ready){syncPull();refreshHello();}else if(SY.on)syncConnect();});}
 /* фото на Диске организатора */
 const upBusy={},rIn={};
@@ -791,6 +792,7 @@ function render(){
   else if(tab==='pay')view.innerHTML=payHTML();
   else if(tab==='guests')view.innerHTML=guestsHTML();
   else view.innerHTML=todoHTML();
+  if(PV)view.insertAdjacentHTML('afterbegin','<section class="card" style="padding:12px 16px;border-color:var(--accent)"><div class="row" style="justify-content:space-between;flex-wrap:nowrap"><span class="small"><b>Просмотр глазами '+(PV==='viewer'?'зрителя':'редактора')+'</b><br><span class="muted">'+(PV==='viewer'?'Так видят те, у кого только просмотр. Изменения отключены.':'Так видят Марина и Олег. Изменения сохраняются.')+'</span></span><button type="button" class="btn sm primary" data-act="pvexit">Выйти</button></div></section>');
   hydrate(view);
 }
 function heroHTML(){
@@ -834,7 +836,7 @@ function homeHTML(){
   h+='<section class="card"><div class="h"><h2>Чек-лист · '+done+' из '+st.tasks.length+'</h2><button type="button" class="link" data-gotab="todo">Открыть</button></div><div class="list">'+next.map(taskRow).join('')+'</div></section>';
   const gs=guestStats();
   if(gs.all||st.cfg.menuA)h+='<section class="card"><div class="h"><h2>Гости</h2><button type="button" class="link" data-gotab="guests">Список</button></div><div class="gstat"><div class="mk"><div class="k">Приглашено</div><div class="v">'+gs.all+'</div></div><div class="mk"><div class="k">Подтвердили</div><div class="v" style="color:var(--good)">'+gs.ok+'</div></div><div class="mk"><div class="k">Детей</div><div class="v">'+gs.kids+'</div></div></div>'+(st.cfg.menuA?'<div class="banq"><div class="ln main"><span class="small">Банкет по подтвердившим</span><b>'+money(menuCost(gs.okA,gs.okK))+'</b></div></div>':'')+'</section>';
-  if(SY.ready&&SY.owner){const ch=Object.keys(SY.meta).map(k=>Object.assign({k},SY.meta[k])).filter(m=>!m.del&&m.at&&changeLabel(m.k)).sort((a,b)=>b.at-a.at).slice(0,6);
+  if(SY.ready&&ownerUI()){const ch=Object.keys(SY.meta).map(k=>Object.assign({k},SY.meta[k])).filter(m=>!m.del&&m.at&&changeLabel(m.k)).sort((a,b)=>b.at-a.at).slice(0,6);
     if(ch.length)h+='<section class="card"><div class="h"><h2>Последние изменения</h2></div><div class="list">'+ch.map(m=>'<div class="li"'+(m.k.indexOf('v_')===0?' data-open="'+m.k.slice(2)+'"':m.k==='tasks'?' data-gotab="todo"':m.k.indexOf('g_')===0?' data-gotab="guests"':'')+'><span class="dot '+(isFresh(m.k)?'acc':'')+'"></span><div><div class="t">'+esc(changeLabel(m.k))+(isFresh(m.k)?'<span class="fresh">новое</span>':'')+'</div><div class="s">'+esc(m.by||'—')+' · '+fmtAgo(m.at)+'</div></div><div class="r"></div></div>').join('')+'</div></section>';}
   if(SY.ro)h='<section class="card" style="padding:12px 16px"><span class="small" style="color:var(--txt-2)">Режим просмотра.</span></section>'+h;
   if(!hasData())h+='<section class="card"><div class="h"><h2>С чего начать</h2></div><p class="small" style="margin:0 0 12px;color:var(--txt-2)">Укажите дату и бюджет, затем добавьте первых подрядчиков. Можно сначала посмотреть, как всё выглядит с примером.</p><div class="row"><button type="button" class="btn primary" data-act="settings">Дата и бюджет</button><button type="button" class="btn" data-act="demo">Показать пример</button></div></section>';
@@ -983,7 +985,7 @@ function openVendor(id,fresh){
   const act=(k,ic,lbl)=>'<button type="button" class="iconbtn" data-cact="'+k+'" aria-label="'+lbl+'" title="'+lbl+'">'+ic+'</button>';
   let h='<div class="sheet-top"><button type="button" class="iconbtn" data-close aria-label="Назад">'+ICON.back+'</button><span class="ttl">'+esc(catName(v.cat))+'</span><button type="button" class="iconbtn" data-vdel aria-label="Удалить">'+ICON.del+'</button></div>';
   h+='<div class="stack"><input class="title" id="vf-name" data-vf="name" value="'+esc(v.name)+'" placeholder="Имя или студия" autocomplete="off">';
-  const vm=SY.ready&&SY.owner&&SY.meta['v_'+v.id];if(vm&&vm.at)h+='<div class="changed">Изменено: '+esc(vm.by||'—')+', '+fmtAgo(vm.at)+'</div>';
+  const vm=SY.ready&&ownerUI()&&SY.meta['v_'+v.id];if(vm&&vm.at)h+='<div class="changed">Изменено: '+esc(vm.by||'—')+', '+fmtAgo(vm.at)+'</div>';
   h+='<div class="statuses" role="group" aria-label="Статус">'+STATUS.map(([k,l])=>'<button type="button" class="st'+(k==='no'?' no':'')+'" data-status="'+k+'" aria-pressed="'+(v.status===k)+'">'+l+'</button>').join('')+'</div>';
   const curSel=(attr,val)=>'<select class="cur" '+attr+' aria-label="Валюта">'+CURS.map(k=>'<option value="'+k+'"'+(val===k?' selected':'')+'>'+CUR[k]+'</option>').join('')+'</select>';
   h+='<section class="card"><div class="h"><h2>Деньги</h2><span id="vmoneyPill"></span></div><div class="grid2"><div class="fld"><label for="vf-price">Стоимость по договорённости</label><div class="withcur"><input id="vf-price" data-vf="price" type="number" inputmode="decimal" value="'+esc(v.price||'')+'" placeholder="0" autocomplete="off">'+curSel('data-vcur',vc(v))+'</div></div><div class="fld"><label>Внесено / осталось</label><div id="vmoney" class="num" style="min-height:44px;display:flex;flex-wrap:wrap;align-items:center;font-weight:700;font-size:16px"></div></div></div><div id="vfx"></div><div class="bar" id="vbar"></div></section>';
@@ -1035,7 +1037,7 @@ function openSettings(){refreshHello();
    '</div></section>'+ratesCard()+
    '<section class="card"><div class="h"><h2>Оформление</h2></div><div class="seg" role="group" aria-label="Тема">'+[['auto','Как в системе'],['light','Светлая'],['dark','Тёмная']].map(([k,l])=>'<button type="button" data-theme-set="'+k+'" aria-pressed="'+((localTheme()||'auto')===k)+'">'+l+'</button>').join('')+'</div></section>'+
    shareCard()+'<section class="card"><div class="h"><h2>Данные</h2></div><div class="row"><button type="button" class="btn sm" data-act="copyjson">Скопировать резервную копию</button><button type="button" class="btn sm" data-act="pastejson">Вставить из копии</button></div><div class="fld" id="pasteBox" hidden style="margin-top:10px"><label for="pasteArea">Вставьте текст резервной копии</label><textarea id="pasteArea"></textarea><div class="row" style="margin-top:8px"><button type="button" class="btn primary sm" data-act="doimport">Загрузить</button></div></div></section>'+
-   (hasData()?'<section class="card"><div class="h"><h2>Пример</h2></div><div class="row"><button type="button" class="btn sm" data-act="demo">Заполнить примером</button>'+(SY.ready&&!SY.owner?'':'<button type="button" class="btn sm danger" data-act="wipe">Удалить всё</button>')+'</div></section>':'')+
+   (hasData()?'<section class="card"><div class="h"><h2>Пример</h2></div><div class="row"><button type="button" class="btn sm" data-act="demo">Заполнить примером</button>'+(SY.ready&&!ownerUI()?'':'<button type="button" class="btn sm danger" data-act="wipe">Удалить всё</button>')+'</div></section>':'')+
    '</div>');
 }
 
@@ -1076,6 +1078,7 @@ document.addEventListener('click',e=>{
       const v=st.vendors[lb.vid];const im=v&&v.imgs[lb.i];if(!im)return;delImage(lb.vid,im.id).then(()=>{renderImgs();if(!v.imgs.length)closeLb();else{lb.i=Math.min(lb.i,v.imgs.length-1);drawLb();}toast('Фото удалено.');});}
     return;}
   if(SY.ro&&t.closest('[data-tasktoggle],[data-paytoggle],[data-add],[data-newcat],[data-status],[data-addpay],[data-ptoggle],[data-pdel],[data-atoggle],[data-adel],[data-addagree],[data-sugg],[data-contract],[data-vdel],[data-vfxnow],[data-secshow],[data-secdel],[data-gok],[data-gkid],[data-gsw],[data-gside],[data-tdel1],[data-drag],[data-act="demo"],[data-act="wipe"],[data-act="addsec"],[data-act="rmdemo"],[data-act="todoedit"],[data-act="gdel"],[data-act="tdel"],[data-act="tdreset"],[data-act="ratesnow"],[data-ratesauto],[data-act="gbulk"],[data-act="gbulkadd"],[data-act="doimport"],[data-act="pastejson"],[data-theme-set="x"]')){toast('У вас доступ только для просмотра.');return;}
+  if((el=t.closest('[data-pv]'))){PV=el.dataset.pv;setRole(SY.role);closeSheet();tab='home';render();window.scrollTo(0,0);return;}
   if((el=t.closest('[data-close]'))){closeSheet();return;}
   if((el=t.closest('[data-gok]'))){const g=st.guests[el.dataset.gok];if(g){g.ok=!g.ok;if(g.ok)g.no=false;haptic(g.ok?'ok':'');persist('g',g.id);render();}return;}
   if((el=t.closest('[data-gkid]'))){const g=st.guests[el.dataset.gkid];if(g){g.kid=!g.kid;haptic();persist('g',g.id);render();}return;}
@@ -1107,6 +1110,7 @@ document.addEventListener('click',e=>{
   if((el=t.closest('[data-act]'))){const a=el.dataset.act;
     if(a==='settings')openSettings();
     else if(a==='addsec')openSections(true);
+    else if(a==='pvexit'){PV='';setRole(SY.role);render();toast('Вы снова организатор.');}
     else if(a==='todoedit'){todoEdit=!todoEdit;render();}
     else if(a==='gbulk'){const b=$('#gBulkBox');if(b){b.hidden=!b.hidden;if(!b.hidden)$('#gBulk').focus();}}
     else if(a==='gbulkadd'){const ta=$('#gBulk');const added=addGuests((ta.value||'').split(/\n+/));if(added.length){render();toast('Добавлено гостей: '+added.length+'.');}}
