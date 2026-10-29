@@ -336,6 +336,12 @@ select.cur{-webkit-appearance:none;appearance:none;flex:none;width:auto!importan
 .pay .meta .fxin{margin-left:8px;font-size:12px}
 .pay .meta .fxin input{width:86px;height:28px!important;min-height:28px!important;font-size:13px}
 
+.iconbtn[data-sync]{position:relative}
+.iconbtn[data-sync]::after{content:"";position:absolute;top:5px;right:5px;width:8px;height:8px;border-radius:50%;box-shadow:0 0 0 2px var(--bg)}
+.iconbtn[data-sync="ok"]::after{background:var(--good)}
+.iconbtn[data-sync="wait"]::after{background:var(--warn)}
+.iconbtn[data-sync="err"]::after{background:var(--crit)}
+
 /* фото */
 .gal{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
 .gal .im,.gal .add{position:relative;aspect-ratio:1;border-radius:16px;overflow:hidden;border:1px solid var(--glass-brd);background:var(--surface-2);box-shadow:inset 0 1px 0 var(--spec)}
@@ -521,8 +527,89 @@ function normalize(j){const o={cfg:Object.assign({n1:'Марина',n2:'Олег
 function docKey(kind,id){return kind==='v'?'v_'+id:kind;}
 function docBody(kind,id){if(kind==='cfg')return {cfg:st.cfg};if(kind==='tasks')return {tasks:st.tasks};return st.vendors[id]?{v:st.vendors[id]}:null;}
 function persist(kind,id){const key=docKey(kind,id);saveLocal();S.pending[key]=true;clearTimeout(S.timers[key]);S.timers[key]=setTimeout(()=>flush(kind,id),600);}
+/* ---------- Общий доступ: сервер Google Apps Script организатора ---------- */
+const SYNC_URL='https://script.google.com/macros/s/AKfycby1BaazmNVmkiC1WWk-xfnRHIdEadPDTtbdx72JZGPsvE_lAErvhNxii2K2QaXX3p_-/exec';
+const SY={on:false,ready:false,state:'',err:'',me:null,owner:false,members:[],bot:'',since:0,pending:{},seq:0,busy:false,pulling:false,okAt:0,pt:0};
+const lsGet=k=>{try{return localStorage.getItem(k);}catch(e){return null;}};
+const lsSet=(k,v)=>{try{if(v)localStorage.setItem(k,v);else localStorage.removeItem(k);}catch(e){}};
+async function api(op,data){
+  const r=await fetch(SYNC_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(Object.assign({op,initData:TGA?TGA.initData:''},data||{}))});
+  const j=await r.json();if(!j.ok){const e=new Error(j.err||'fail');e.code=j.err;throw e;}return j;}
+function bodyOf(k){if(k==='cfg')return {cfg:st.cfg};if(k==='tasks')return {tasks:st.tasks};const v=st.vendors[k.slice(2)];return v?{v}:null;}
+function setBody(k,b){if(k==='cfg'){if(b&&b.cfg)st.cfg=Object.assign({},st.cfg,b.cfg);}else if(k==='tasks'){if(b&&Array.isArray(b.tasks))st.tasks=b.tasks;}
+  else{const id=k.slice(2);if(!b||!b.v)delete st.vendors[id];else{const n=normalize({cfg:st.cfg,vendors:{[id]:b.v}});Object.assign(st.vendors,n.vendors);}}}
+function savePending(){lsSet('wedding-pending',Object.keys(SY.pending).length?JSON.stringify(Object.keys(SY.pending)):'');}
+function queueKey(k){SY.pending[k]=++SY.seq;savePending();clearTimeout(SY.pt);SY.pt=setTimeout(syncPush,400);updSync();}
+async function syncPush(){
+  if(!SY.ready||SY.busy)return;const keys=Object.keys(SY.pending);if(!keys.length){updSync();return;}
+  SY.busy=true;const sent={};keys.forEach(k=>sent[k]=SY.pending[k]);
+  try{await api('push',{docs:keys.map(k=>({key:k,body:bodyOf(k)}))});keys.forEach(k=>{if(SY.pending[k]===sent[k])delete SY.pending[k];});savePending();SY.okAt=Date.now();SY.state='ok';}
+  catch(e){SY.state='err';SY.err=e.code||'net';if(e.code==='not_member'){SY.on=false;SY.ready=false;SY.state='noaccess';lsSet('wedding-shared','');}}
+  finally{SY.busy=false;}
+  updSync();if(Object.keys(SY.pending).length&&SY.state==='ok'){clearTimeout(SY.pt);SY.pt=setTimeout(syncPush,1500);}}
+async function syncPull(){
+  if(!SY.ready||SY.pulling||SY.busy)return;SY.pulling=true;
+  try{const r=await api('pull',{since:SY.since});SY.since=r.now-1000;SY.okAt=Date.now();if(SY.state==='err')SY.state='ok';
+    const docs=r.docs.filter(d=>!SY.pending[d.key]&&JSON.stringify(d.body)!==JSON.stringify(bodyOf(d.key)));
+    if(docs.length){docs.forEach(d=>setBody(d.key,d.body));saveLocal();refreshAfterSync();}}
+  catch(e){SY.state='err';SY.err=e.code||'net';}
+  finally{SY.pulling=false;}updSync();}
+function refreshAfterSync(){
+  if(drag)return;render();
+  if(sheet.hidden)return;
+  if(sheetVendor){if(!st.vendors[sheetVendor]){closeSheet();toast('Эту карточку удалили на другом устройстве.');return;}
+    const a=document.activeElement;if(a&&sheet.contains(a)&&/INPUT|TEXTAREA|SELECT/.test(a.tagName))return;
+    const sc=sheet.scrollTop;openVendor(sheetVendor);sheet.scrollTop=sc;}}
+async function syncConnect(){
+  if(!TGA||!SYNC_URL)return;
+  try{
+    const h=await api('hello');SY.me=h.you;SY.members=h.members||[];SY.owner=!!h.owner;SY.bot=h.bot||'';
+    if(!h.member){SY.on=false;SY.ready=false;SY.state='noaccess';lsSet('wedding-shared','');updSync();refreshShareUI();return;}
+    const pl=await api('pull',{since:0});
+    const keep={};Object.keys(SY.pending).forEach(k=>keep[k]=bodyOf(k));
+    if(pl.docs.some(d=>d.body)){const docs={};pl.docs.forEach(d=>{if(d.body)docs[d.key]=d.body;});applyDocs(docs);Object.keys(keep).forEach(k=>setBody(k,keep[k]));saveLocal();}
+    else{['cfg','tasks'].concat(Object.keys(st.vendors).map(id=>'v_'+id)).forEach(k=>{SY.pending[k]=++SY.seq;});savePending();}
+    SY.since=pl.now-1000;SY.on=true;SY.ready=true;SY.state='ok';SY.okAt=Date.now();S.tg=false;mode='shared';lsSet('wedding-shared','1');
+    ensureTasks();fixMissing();render();refreshShareUI();
+    if(h.joined)toast(SY.owner?'Общий планер создан — вы организатор.':'Готово: вы подключились к общему планеру.');
+    syncPush();uploadPendingImgs();
+  }catch(e){SY.state='err';SY.err=e.code||String(e&&e.message||e);}
+  updSync();}
+function updSync(){const b=$('#openSettings');if(b){const st2=!(TGA&&SYNC_URL)||SY.state==='noaccess'?'':SY.state==='err'?'err':!SY.ready||Object.keys(SY.pending).length||SY.busy?'wait':'ok';if(st2)b.dataset.sync=st2;else delete b.dataset.sync;}
+  const el=$('#syncStatus');if(el)el.textContent=syncText();}
+function syncText(){if(SY.state==='noaccess')return 'Нет доступа к общему планеру.';
+  if(!SY.ready)return SY.on?'Нет связи с сервером. Изменения сохранены на телефоне и отправятся, когда связь появится.':'Подключаюсь…';
+  if(SY.state==='err')return 'Нет связи с сервером. Изменения сохранены на телефоне и отправятся позже.';
+  const n=Object.keys(SY.pending).length;if(n||SY.busy)return 'Отправляю изменения…';
+  return 'Всё синхронизировано'+(SY.okAt?' · '+new Date(SY.okAt).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'}):'');}
+function shareCard(){if(!(TGA&&SYNC_URL))return '';
+  let h='<section class="card" id="shareCard"><div class="h"><h2>Общий доступ</h2>'+(SY.ready?'<span class="pill p-good">включён</span>':'')+'</div>';
+  if(SY.state==='noaccess')return h+'<p class="small" style="margin:0;color:var(--txt-2)">У вас пока нет доступа к общему планеру. Попросите организатора прислать ссылку-приглашение и откройте её в Telegram. Пока вы работаете в личном планере.</p></section>';
+  h+='<p class="small" id="syncStatus" style="margin:0 0 10px;color:var(--txt-2)">'+esc(syncText())+'</p>';
+  if(!SY.ready)return h+'<button type="button" class="btn sm" data-act="syncretry">Повторить</button></section>';
+  h+='<div class="list">'+SY.members.map(m=>'<div class="li" style="cursor:default"><span class="mono" style="width:34px;height:34px;font-size:12px">'+esc(monoOf(m.name))+'</span><div><div class="t">'+esc(m.name)+(SY.me&&m.id===SY.me.id?' <span class="muted" style="font-weight:500">(вы)</span>':'')+'</div><div class="s">'+(m.owner?'организатор':'участник')+'</div></div><div class="r">'+(SY.owner&&!m.owner?'<button type="button" class="btn sm ghost" data-kick="'+m.id+'">Убрать</button>':'')+'</div></div>').join('')+'</div>';
+  if(SY.owner)h+='<div class="row" style="margin-top:10px"><button type="button" class="btn primary sm" data-act="invite">Пригласить</button></div><div id="inviteBox" hidden style="margin-top:10px"></div><p class="small muted" style="margin:10px 0 0">Ссылка-приглашение одноразовая и действует неделю. Для каждого человека — своя.</p>';
+  return h+'</section>';}
+function refreshShareUI(){const el=$('#shareCard');if(el)el.outerHTML=shareCard();}
+function startSync(){if(!TGA||!SYNC_URL)return;
+  Object.keys(JSON.parse(lsGet('wedding-pending')||'[]').reduce((o,k)=>(o[k]=1,o),{})).forEach(k=>{SY.pending[k]=++SY.seq;});
+  if(lsGet('wedding-shared')==='1'){SY.on=true;mode='shared';}
+  updSync();syncConnect();
+  setInterval(()=>{if(document.hidden)return;if(!SY.ready){if(SY.on||SY.state==='err')syncConnect();return;}syncPull();syncPush();uploadPendingImgs();},20000);
+  document.addEventListener('visibilitychange',()=>{if(document.hidden)return;if(SY.ready)syncPull();else if(SY.on)syncConnect();});}
+/* фото на Диске организатора */
+const upBusy={},rIn={};
+async function uploadImg(vid,id,full,thumb){if(!SY.ready||upBusy[id])return;upBusy[id]=1;
+  try{full=full||await IMG.get('i_'+id);thumb=thumb||await IMG.get('t_'+id);if(!full)return;await api('img_put',{id,full,thumb});
+    const v=st.vendors[vid];const im=v&&v.imgs.find(x=>x.id===id);if(im&&!im.up){im.up=true;persist('v',vid);}}
+  catch(e){}finally{delete upBusy[id];}}
+function uploadPendingImgs(){if(!SY.ready)return;vendorsArr().forEach(v=>(v.imgs||[]).forEach(im=>{if(!im.up)uploadImg(v.id,im.id);}));}
+function remoteImg(id,kind){if(!SY.ready)return Promise.resolve(null);const k=kind+id;if(!rIn[k])rIn[k]=api('img_get',{id,kind}).then(r=>r.data).catch(()=>null).finally(()=>setTimeout(()=>{delete rIn[k];},200));return rIn[k];}
+function dropRemoteImg(id){if(SY.ready)api('img_del',{id}).catch(()=>{});}
+
 async function flush(kind,id){
   const key=docKey(kind,id),body=docBody(kind,id);
+  if(SY.on){queueKey(key);S.pending[key]=false;return;}
   try{
     if(S.db){const ref=S.db.doc('w/'+key);if(body)await ref.set(body);else await ref.delete();}
     else if(S.tg){await new Promise((res,rej)=>{if(!body){TGA.CloudStorage.removeItem(key,e=>e?rej(e):res());return;}let s=JSON.stringify(body);if(s.length>4090){toast('Слишком длинные заметки: Telegram хранит до 4 тысяч знаков на карточку.');}TGA.CloudStorage.setItem(key,s.slice(0,4090),e=>e?rej(e):res());});}
@@ -543,10 +630,13 @@ async function initStore(){
     try{TGA.BackButton.onClick(()=>{if(closeLb())return;closeSheet();});}catch(e){}
     if(TGA.CloudStorage&&TGA.isVersionAtLeast&&TGA.isVersionAtLeast('6.9')){
       S.tg=true;mode='tg';
+      if(lsGet('wedding-shared')!=='1'){
       const keys=await new Promise(res=>TGA.CloudStorage.getKeys((e,k)=>res(e?[]:k||[])));
       if(keys.length){const vals=await new Promise(res=>TGA.CloudStorage.getItems(keys,(e,v)=>res(e?{}:v||{})));const docs={};Object.keys(vals).forEach(k=>{try{docs[k]=JSON.parse(vals[k]);}catch(e){}});applyDocs(docs);}
       else if(hasData())pushAll();
+      }
     }else mode='local';
+    startSync();
   }else if(window.claude&&window.claude.use){
     try{const db=await window.claude.use('db');
       if(db){S.db=db;mode='cloud';const snap=await db.collection('w').get();if(!snap.empty){const docs={};snap.docs.forEach(d=>docs[d.id]=d.data());applyDocs(docs);}else if(hasData())pushAll();}
@@ -569,6 +659,7 @@ const IMG=(()=>{const mem={};let idbP=null;
   const dsGet=(d,k)=>new Promise(res=>{try{d.getItem(k,(e,v)=>res(e?null:v||null));}catch(e){res(null);}});
   return {
     volatile:false,
+    cache(k,v){mem[k]=v;},
     async put(k,v){const d=ds();if(d){try{await dsSet(d,k,v);mem[k]=v;return;}catch(e){}}try{await op('readwrite',s=>s.put(v,k));mem[k]=v;}catch(e){if(e&&e.name==='QuotaExceededError')throw e;mem[k]=v;this.volatile=true;}},
     async get(k){if(mem[k])return mem[k];const d=ds();if(d){const v=await dsGet(d,k);if(v)return mem[k]=v;}try{const v=await op('readonly',s=>s.get(k));if(v)return mem[k]=v;}catch(e){}return null;},
     async del(k){delete mem[k];const d=ds();if(d){try{await new Promise(res=>d.removeItem(k,()=>res()));}catch(e){}}try{await op('readwrite',s=>s.delete(k));}catch(e){}}
@@ -579,18 +670,18 @@ function shrink(file){return new Promise((res,rej)=>{const url=URL.createObjectU
   im.onerror=()=>{URL.revokeObjectURL(url);rej(new Error('img'));};im.src=url;});}
 async function addImages(files){const v=st.vendors[sheetVendor];if(!v)return;const arr=[...files].filter(f=>/^image\//.test(f.type)||/\.(heic|jpe?g|png|webp)$/i.test(f.name)).slice(0,12);if(!arr.length)return;
   toast(arr.length>1?'Сохраняю фото…':'Сохраняю…');let ok=0;
-  for(const f of arr){try{const r=await shrink(f);const id=uid();await IMG.put('i_'+id,r.full.data);await IMG.put('t_'+id,r.thumb.data);THUMB[id]=r.thumb.data;v.imgs.push({id,w:r.full.w,h:r.full.h,at:Date.now()});ok++;}
+  for(const f of arr){try{const r=await shrink(f);const id=uid();await IMG.put('i_'+id,r.full.data);await IMG.put('t_'+id,r.thumb.data);THUMB[id]=r.thumb.data;v.imgs.push({id,w:r.full.w,h:r.full.h,at:Date.now(),up:false});ok++;if(SY.ready)uploadImg(v.id,id,r.full.data,r.thumb.data);}
     catch(e){toast(ok?'Сохранено '+ok+' фото, на остальные не хватило места.':'Не получилось сохранить фото на этом устройстве.');break;}}
   if(ok){persist('v',v.id);renderImgs();haptic('ok');if(IMG.volatile)toast('Этот браузер не даёт хранить фото — они пропадут после закрытия.');else if(ok===arr.length)toast(ok===1?'Фото добавлено.':'Добавлено фото: '+ok+'.');}}
-async function delImage(vid,id){const v=st.vendors[vid];if(!v)return;v.imgs=v.imgs.filter(x=>x.id!==id);delete THUMB[id];persist('v',vid);await IMG.del('i_'+id);await IMG.del('t_'+id);}
-async function hydrate(root){const els=(root||document).querySelectorAll('img[data-iid]');for(const im of els){if(im.getAttribute('src'))continue;const id=im.dataset.iid;let d=THUMB[id];if(!d){d=await IMG.get('t_'+id);if(d)THUMB[id]=d;}if(d)im.src=d;}}
+async function delImage(vid,id){const v=st.vendors[vid];if(!v)return;v.imgs=v.imgs.filter(x=>x.id!==id);delete THUMB[id];persist('v',vid);dropRemoteImg(id);await IMG.del('i_'+id);await IMG.del('t_'+id);}
+async function hydrate(root){const els=(root||document).querySelectorAll('img[data-iid]');for(const im of els){if(im.getAttribute('src'))continue;const id=im.dataset.iid;let d=THUMB[id];if(!d){d=await IMG.get('t_'+id);if(!d&&SY.ready){d=await remoteImg(id,'thumb');if(d)IMG.put('t_'+id,d).catch(()=>{});}if(d)THUMB[id]=d;}if(d)im.src=d;}}
 let lb=null;
 function openLb(vid,iid){const v=st.vendors[vid];if(!v)return;const i=v.imgs.findIndex(x=>x.id===iid);if(i<0)return;closeLb();lb={vid,i};const el=document.createElement('div');el.className='lb';el.id='lb';el.setAttribute('role','dialog');el.setAttribute('aria-modal','true');el.setAttribute('aria-label','Фото');document.body.appendChild(el);
   let sx=null;el.addEventListener('touchstart',e=>{sx=e.touches[0].clientX;},{passive:true});el.addEventListener('touchend',e=>{if(sx==null||!lb)return;const dx=e.changedTouches[0].clientX-sx;sx=null;if(Math.abs(dx)>50)stepLb(dx<0?1:-1);});drawLb();}
 function stepLb(d){if(!lb)return;const v=st.vendors[lb.vid];if(!v||v.imgs.length<2)return;lb.i=(lb.i+d+v.imgs.length)%v.imgs.length;drawLb();}
 async function drawLb(){const el=$('#lb');if(!el||!lb)return;const v=st.vendors[lb.vid];const im=v&&v.imgs[lb.i];if(!im){closeLb();return;}
   el.innerHTML='<div class="lb-top"><button type="button" class="iconbtn" data-lb="close" aria-label="Закрыть">'+ICON.x+'</button><span class="cnt">'+(lb.i+1)+' из '+v.imgs.length+'</span><button type="button" class="iconbtn" data-lb="del" aria-label="Удалить фото">'+ICON.del+'</button></div><div class="lb-img" data-lb="bg">'+(v.imgs.length>1?'<button type="button" class="lb-nav l" data-lb="prev" aria-label="Предыдущее">'+ICON.back+'</button><button type="button" class="lb-nav r" data-lb="next" aria-label="Следующее">'+ICON.back+'</button>':'')+'<img alt="" src="'+(THUMB[im.id]||'')+'"></div>';
-  const full=await IMG.get('i_'+im.id);const img=el.querySelector('.lb-img img');if(img&&full&&lb&&v.imgs[lb.i]===im)img.src=full;}
+  let full=await IMG.get('i_'+im.id);if(!full&&SY.ready){full=await remoteImg(im.id,'full');if(full)IMG.cache('i_'+im.id,full);}const img=el.querySelector('.lb-img img');if(img&&full&&lb&&v.imgs[lb.i]===im)img.src=full;}
 function closeLb(){const el=$('#lb');if(!el)return false;el.remove();lb=null;return true;}
 
 /* ---------- Мелочи интерфейса ---------- */
@@ -782,7 +873,7 @@ function openVendor(id,fresh){
   h+='<section class="card"><div class="h"><h2>Деньги</h2><span id="vmoneyPill"></span></div><div class="grid2"><div class="fld"><label for="vf-price">Стоимость по договорённости</label><div class="withcur"><input id="vf-price" data-vf="price" type="number" inputmode="decimal" value="'+esc(v.price||'')+'" placeholder="0" autocomplete="off">'+curSel('data-vcur',vc(v))+'</div></div><div class="fld"><label>Внесено / осталось</label><div id="vmoney" class="num" style="min-height:44px;display:flex;flex-wrap:wrap;align-items:center;font-weight:700;font-size:16px"></div></div></div><div id="vfx"></div><div class="bar" id="vbar"></div></section>';
   h+='<section class="card"><div class="h"><h2>Платежи</h2></div><div id="vpays"></div><div class="row" style="margin-top:10px"><button type="button" class="btn sm" data-addpay="Предоплата">+ Предоплата</button><button type="button" class="btn sm" data-addpay="Платёж">+ Платёж</button><button type="button" class="btn sm" data-addpay="Остаток">+ Остаток</button></div></section>';
   h+='<section class="card"><div class="h"><h2>Договорённости</h2><span class="small muted">✓ — есть в договоре</span></div><div id="vagree"></div><div class="withbtn" style="margin-top:8px"><input id="newAgree" type="text" placeholder="Что обсудили: «8 часов съёмки»" style="min-height:44px;border-radius:12px;border:1px solid var(--line);background:var(--field);color:var(--txt);padding:0 12px;font:inherit;font-size:16px" aria-label="Новая договорённость"><button type="button" class="iconbtn" data-addagree aria-label="Добавить">'+ICON.plus+'</button></div><div class="chips" id="vsugg" style="margin-top:10px"></div></section>';
-  h+='<section class="card"><div class="h"><h2>Фото</h2><span class="small muted">портфолио, прайс, договор</span></div><div class="gal" id="vimgs"></div><p class="small muted" style="margin:10px 0 0">Фото хранятся на этом устройстве.</p></section>';
+  h+='<section class="card"><div class="h"><h2>Фото</h2><span class="small muted">портфолио, прайс, договор</span></div><div class="gal" id="vimgs"></div><p class="small muted" style="margin:10px 0 0">'+(SY.ready?'Фото видны всем участникам: они загружаются на Google Диск организатора.':'Фото хранятся на этом устройстве.')+'</p></section>';
   h+='<section class="card"><div class="h"><h2>Контакты</h2></div><div class="stack" style="gap:10px">'+f('person','Контактное лицо','text','Имя')+
     f('phone','Телефон','tel','+375…',act('call',ICON.go,'Позвонить')+act('copyphone',ICON.copy,'Скопировать'))+
     f('tg','Telegram','text','@username',act('tg',ICON.go,'Написать в Telegram'))+
@@ -822,13 +913,13 @@ function renderAgree(){const v=st.vendors[sheetVendor];const box=$('#vagree');if
 /* ---------- Настройки ---------- */
 function openSettings(){
   const c=st.cfg;const f=(k,l,type,ph)=>'<div class="fld"><label for="cf-'+k+'">'+l+'</label><input id="cf-'+k+'" data-cf="'+k+'" type="'+(type||'text')+'" value="'+esc(c[k]||'')+'" placeholder="'+(ph||'')+'"></div>';
-  const storeTxt=(mode==='tg'?'Данные хранятся в облаке Telegram и видны на всех ваших устройствах.':mode==='cloud'?'Данные хранятся в облаке Claude.':'Данные хранятся только в этом браузере. Сохраняйте резервную копию.')+' Фото лежат на этом устройстве и в копию не входят.';
+  const storeTxt=(mode==='shared'?'Данные общие для всех участников: они лежат в Google Таблице организатора, а фото — в папке на его Google Диске. Копия хранится и на телефоне, поэтому планер работает без интернета.':mode==='tg'?'Данные хранятся в облаке Telegram и видны на всех ваших устройствах.':mode==='cloud'?'Данные хранятся в облаке Claude.':'Данные хранятся только в этом браузере. Сохраняйте резервную копию.')+(mode==='shared'?'':' Фото лежат на этом устройстве и в копию не входят.');
   openSheet('<div class="sheet-top"><button type="button" class="iconbtn" data-close aria-label="Назад">'+ICON.back+'</button><span class="ttl">Настройки</span><span style="width:40px"></span></div><div class="stack">'+
    '<section class="card"><div class="h"><h2>Свадьба</h2></div><div class="stack" style="gap:10px"><div class="grid2">'+f('n1','Имя','text','Марина')+f('n2','Имя','text','Олег')+'</div><div class="grid2">'+f('date','Дата свадьбы','date')+f('city','Город','text','Гомель')+'</div><div class="grid2">'+f('budget','Бюджет','number','0')+f('guests','Гостей','number','0')+'</div>'+
    '</div></section>'+ratesCard()+
    '<section class="card"><div class="h"><h2>Оформление</h2></div><div class="seg" role="group" aria-label="Тема">'+[['auto','Как в системе'],['light','Светлая'],['dark','Тёмная']].map(([k,l])=>'<button type="button" data-theme-set="'+k+'" aria-pressed="'+((localTheme()||'auto')===k)+'">'+l+'</button>').join('')+'</div></section>'+
-   '<section class="card"><div class="h"><h2>Данные</h2></div><p class="small" style="margin:0 0 10px;color:var(--txt-2)">'+storeTxt+'</p><div class="row"><button type="button" class="btn sm" data-act="copyjson">Скопировать резервную копию</button><button type="button" class="btn sm" data-act="pastejson">Вставить из копии</button></div><div class="fld" id="pasteBox" hidden style="margin-top:10px"><label for="pasteArea">Вставьте текст резервной копии</label><textarea id="pasteArea"></textarea><div class="row" style="margin-top:8px"><button type="button" class="btn primary sm" data-act="doimport">Загрузить</button></div></div></section>'+
-   (hasData()?'<section class="card"><div class="h"><h2>Пример</h2></div><div class="row"><button type="button" class="btn sm" data-act="demo">Заполнить примером</button><button type="button" class="btn sm danger" data-act="wipe">Удалить всё</button></div></section>':'')+
+   shareCard()+'<section class="card"><div class="h"><h2>Данные</h2></div><p class="small" style="margin:0 0 10px;color:var(--txt-2)">'+storeTxt+'</p><div class="row"><button type="button" class="btn sm" data-act="copyjson">Скопировать резервную копию</button><button type="button" class="btn sm" data-act="pastejson">Вставить из копии</button></div><div class="fld" id="pasteBox" hidden style="margin-top:10px"><label for="pasteArea">Вставьте текст резервной копии</label><textarea id="pasteArea"></textarea><div class="row" style="margin-top:8px"><button type="button" class="btn primary sm" data-act="doimport">Загрузить</button></div></div></section>'+
+   (hasData()?'<section class="card"><div class="h"><h2>Пример</h2></div><div class="row"><button type="button" class="btn sm" data-act="demo">Заполнить примером</button>'+(SY.ready&&!SY.owner?'':'<button type="button" class="btn sm danger" data-act="wipe">Удалить всё</button>')+'</div></section>':'')+
    '</div>');
 }
 
@@ -869,6 +960,8 @@ document.addEventListener('click',e=>{
     return;}
   if((el=t.closest('[data-close]'))){closeSheet();return;}
   if((el=t.closest('[data-taskedit]'))){openTask(el.dataset.taskedit);return;}
+  if((el=t.closest('[data-copylink]'))){copy(el.dataset.copylink);return;}
+  if((el=t.closest('[data-kick]'))){if(el.dataset.armed!=='1'){el.dataset.armed='1';el.textContent='Точно убрать?';return;}api('kick',{id:+el.dataset.kick}).then(r=>{SY.members=r.members||SY.members;refreshShareUI();toast('Доступ закрыт.');}).catch(()=>toast('Не получилось, проверьте интернет.'));return;}
   if((el=t.closest('[data-todomode]'))){st.cfg.todoMode=el.dataset.todomode;persist('cfg');render();return;}
   if((el=t.closest('[data-secshow]'))){const k=el.dataset.secshow;const sh=Object.assign({},st.cfg.show||{});sh[k]=!catVisible(k);st.cfg.show=sh;persist('cfg');el.classList.toggle('on',sh[k]);el.setAttribute('aria-pressed',String(sh[k]));return;}
   if((el=t.closest('[data-secdel]'))){const k=el.dataset.secdel;if(el.dataset.armed!=='1'){el.dataset.armed='1';el.style.borderColor='var(--crit)';el.style.color='var(--crit)';const n=vendorsArr().filter(v=>v.cat===k).length;toast(n?'Нажмите ещё раз: '+n+' '+plural(n,'подрядчик перейдёт','подрядчика перейдут','подрядчиков перейдут')+' в «Другое».':'Нажмите ещё раз, чтобы удалить раздел.');return;}
@@ -887,12 +980,17 @@ document.addEventListener('click',e=>{
   if((el=t.closest('[data-act]'))){const a=el.dataset.act;
     if(a==='settings')openSettings();
     else if(a==='addsec')openSections(true);
+    else if(a==='syncretry'){SY.state='';updSync();syncConnect();}
+    else if(a==='invite'){el.disabled=true;el.textContent='Создаю ссылку…';api('invite').then(r=>{const link='https://t.me/'+(r.bot||SY.bot)+'?startapp=join_'+r.code;const box=$('#inviteBox');
+        if(box){box.hidden=false;box.innerHTML='<div class="withbtn"><input class="inp" readonly value="'+esc(link)+'" aria-label="Ссылка-приглашение"><button type="button" class="iconbtn" data-copylink="'+esc(link)+'" aria-label="Скопировать" style="height:44px;width:44px">'+ICON.copy+'</button></div>';}
+        try{TGA.openTelegramLink('https://t.me/share/url?url='+encodeURIComponent(link)+'&text='+encodeURIComponent('Приглашение в общий свадебный планер — откройте ссылку в Telegram'));}catch(e){}
+      }).catch(e=>toast(e.code==='owner_only'?'Приглашать может только организатор.':'Не удалось создать ссылку, проверьте интернет.')).finally(()=>{el.disabled=false;el.textContent='Пригласить ещё';});}
     else if(a==='sections')openSections();
     else if(a==='ratesnow')updateRatesNow();
     else if(a==='tdreset'){const tk=st.tasks.find(x=>x.id===sheetTask);if(tk){delete tk.due;persist('tasks');openTask(tk.id);}}
     else if(a==='tdel'){if(el.dataset.armed!=='1'){el.dataset.armed='1';el.textContent='Точно удалить?';return;}st.tasks=st.tasks.filter(x=>x.id!==sheetTask);persist('tasks');closeSheet();toast('Задача удалена.');}
     else if(a==='demo'){loadDemo();closeSheet();render();}
-    else if(a==='wipe'){if(el.dataset.armed!=='1'){el.dataset.armed='1';el.textContent='Точно удалить всё?';return;}Object.keys(st.vendors).forEach(id=>{(st.vendors[id].imgs||[]).forEach(im=>{IMG.del('i_'+im.id);IMG.del('t_'+im.id);});delete st.vendors[id];persist('v',id);});st.cfg={n1:'Марина',n2:'Олег',date:'2027-08-28',city:'',currency:'BYN',budget:0,guests:0};st.tasks=[];ensureTasks();persist('cfg');closeSheet();render();toast('Все данные удалены.');}
+    else if(a==='wipe'){if(el.dataset.armed!=='1'){el.dataset.armed='1';el.textContent=SY.ready?'Удалить у всех участников?':'Точно удалить всё?';return;}Object.keys(st.vendors).forEach(id=>{(st.vendors[id].imgs||[]).forEach(im=>{IMG.del('i_'+im.id);IMG.del('t_'+im.id);dropRemoteImg(im.id);});delete st.vendors[id];persist('v',id);});st.cfg={n1:'Марина',n2:'Олег',date:'2027-08-28',city:'',currency:'BYN',budget:0,guests:0};st.tasks=[];ensureTasks();persist('cfg');closeSheet();render();toast('Все данные удалены.');}
     else if(a==='copyjson')copy(JSON.stringify({app:'wedding',v:1,data:st}));
     else if(a==='pastejson'){$('#pasteBox').hidden=false;$('#pasteArea').focus();}
     else if(a==='doimport'){try{const j=JSON.parse($('#pasteArea').value);if(!j||j.app!=='wedding')throw 0;const old=Object.keys(st.vendors);st=normalize(j.data);old.forEach(id=>{if(!st.vendors[id])flush('v',id);});ensureTasks();pushAll();closeSheet();render();toast('Данные загружены.');}catch(err){toast('Не похоже на резервную копию этого приложения.');}}
@@ -914,7 +1012,7 @@ document.addEventListener('click',e=>{
   if((el=t.closest('[data-sugg]'))){addAgree(el.dataset.sugg+': ');const inputs=document.querySelectorAll('#vagree input[data-af]');const last=inputs[inputs.length-1];if(last){last.focus();last.setSelectionRange(last.value.length,last.value.length);}return;}
   if((el=t.closest('[data-contract]'))){v.contract=!v.contract;if(v.contract&&!v.contractDate)v.contractDate=ymd(today());if(v.contract&&(v.status==='search'||v.status==='talks'||v.status==='agreed'))v.status='contract';persist('v',v.id);haptic('ok');openVendor(v.id);return;}
   if((el=t.closest('[data-vdel]'))){if(el.dataset.armed!=='1'){el.dataset.armed='1';el.style.borderColor='var(--crit)';el.style.color='var(--crit)';toast('Нажмите ещё раз, чтобы удалить «'+(v.name||catName(v.cat))+'».');setTimeout(()=>{if(el.isConnected){el.dataset.armed='';el.style.borderColor='';el.style.color='';}},3000);return;}
-    const id=v.id;(v.imgs||[]).forEach(im=>{IMG.del('i_'+im.id);IMG.del('t_'+im.id);});delete st.vendors[id];persist('v',id);closeSheet();toast('Удалено.');return;}
+    const id=v.id;(v.imgs||[]).forEach(im=>{IMG.del('i_'+im.id);IMG.del('t_'+im.id);dropRemoteImg(im.id);});delete st.vendors[id];persist('v',id);closeSheet();toast('Удалено.');return;}
   if((el=t.closest('[data-cact]'))){const k=el.dataset.cact;
     if(k==='call'&&v.phone){const a=document.createElement('a');a.href='tel:'+v.phone.replace(/[^\d+]/g,'');a.click();}
     else if(k==='copyphone'&&v.phone)copy(v.phone);
