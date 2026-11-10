@@ -5,6 +5,14 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1">
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <title>Свадьба: план и бюджет</title>
+<meta name="apple-mobile-web-app-title" content="Свадьба">
+<meta name="application-name" content="Свадьба">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="manifest" href="manifest.webmanifest">
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Forum&display=swap">
@@ -218,6 +226,8 @@ input.title::placeholder{color:var(--txt-3)}
 .task .x{appearance:none;border:0;background:none;color:var(--txt-3);cursor:pointer;font-size:18px;padding:0 4px}
 
 /* вкладки */
+.gate .tabbar,.gate #openSettings{display:none!important}
+.wl-pin{font-size:38px;font-weight:700;letter-spacing:.18em;margin:2px 0 6px;font-variant-numeric:tabular-nums}
 .tabbar{position:fixed;left:0;right:0;bottom:0;z-index:50;background:var(--surface);border-top:1px solid var(--line);display:grid;grid-template-columns:repeat(4,1fr);padding-bottom:env(safe-area-inset-bottom,0px);padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px)}
 .tab{appearance:none;border:0;background:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;padding:9px 0 8px;font-size:11px;font-weight:600;color:var(--txt-3)}
 .tab svg{width:23px;height:23px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
@@ -448,6 +458,8 @@ body.dragmode{-webkit-user-select:none;user-select:none}
 "use strict";
 const TGA=(window.Telegram&&window.Telegram.WebApp&&window.Telegram.WebApp.initData)?window.Telegram.WebApp:null;
 const STANDALONE=!(window.claude&&window.claude.use);
+let WEBTOK='';try{WEBTOK=(!TGA&&localStorage.getItem('wedding-webtok'))||'';}catch(e){}   // ключ входа в браузере (выдаётся после подтверждения в Telegram)
+const AUTH=()=>!!(TGA||WEBTOK);
 const $=s=>document.querySelector(s);
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
@@ -573,12 +585,14 @@ function persist(kind,id){const key=docKey(kind,id);saveLocal();S.pending[key]=t
 /* ---------- Общий доступ: сервер Google Apps Script организатора ---------- */
 const SYNC_URL='https://script.google.com/macros/s/AKfycby1BaazmNVmkiC1WWk-xfnRHIdEadPDTtbdx72JZGPsvE_lAErvhNxii2K2QaXX3p_-/exec';
 let PV='';const ownerUI=()=>SY.owner&&!PV;
+const WEB_OK=!TGA&&STANDALONE&&/^https?:$/.test(location.protocol)&&!!SYNC_URL;
+const webGate=()=>WEB_OK&&!WEBTOK&&(()=>{try{return localStorage.getItem('wedding-weblocal')!=='1';}catch(e){return true;}})();
 const SY={tick:0,role:'',ro:false,meta:{},seenAt:0,on:false,ready:false,state:'',err:'',me:null,owner:false,members:[],bot:'',since:0,pending:{},seq:0,busy:false,pulling:false,okAt:0,pt:0};
 const lsGet=k=>{try{return localStorage.getItem(k);}catch(e){return null;}};
 const lsSet=(k,v)=>{try{if(v)localStorage.setItem(k,v);else localStorage.removeItem(k);}catch(e){}};
 async function api(op,data){
-  const r=await fetch(SYNC_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(Object.assign({op,initData:TGA?TGA.initData:''},data||{}))});
-  const j=await r.json();if(!j.ok){const e=new Error(j.err||'fail');e.code=j.err;throw e;}return j;}
+  const r=await fetch(SYNC_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(Object.assign({op,initData:TGA?TGA.initData:'',token:TGA?undefined:(WEBTOK||undefined)},data||{}))});
+  const j=await r.json();if(!j.ok){if(j.err==='auth'&&!TGA&&WEBTOK){webWipe();location.reload();}const e=new Error(j.err||'fail');e.code=j.err;throw e;}return j;}
 function bodyOf(k){if(k==='cfg')return {cfg:st.cfg};if(k==='tasks')return {tasks:st.tasks};if(k.indexOf('g_')===0){const g=st.guests[k.slice(2)];return g?{g}:null;}const v=st.vendors[k.slice(2)];return v?{v}:null;}
 function setBody(k,b){if(k.indexOf('g_')===0){const id=k.slice(2);if(b&&b.g)st.guests[id]=b.g;else delete st.guests[id];return;}if(k==='cfg'){if(b&&b.cfg)st.cfg=Object.assign({},st.cfg,b.cfg);}else if(k==='tasks'){if(b&&Array.isArray(b.tasks))st.tasks=b.tasks;}
   else{const id=k.slice(2);if(!b||!b.v)delete st.vendors[id];else{const n=normalize({cfg:st.cfg,vendors:{[id]:b.v}});Object.assign(st.vendors,n.vendors);}}}
@@ -615,7 +629,7 @@ function refreshAfterSync(){
     const a=document.activeElement;if(a&&sheet.contains(a)&&/INPUT|TEXTAREA|SELECT/.test(a.tagName))return;
     const sc=sheet.scrollTop;openVendor(sheetVendor);sheet.scrollTop=sc;}}
 async function syncConnect(){
-  if(!TGA||!SYNC_URL)return;
+  if(!AUTH()||!SYNC_URL)return;
   try{
     const h=await api('hello');SY.me=h.you;SY.members=h.members||[];SY.owner=!!h.owner;SY.bot=h.bot||'';SY.role=h.role||(h.owner?'owner':'editor');
     if(!h.member){SY.on=false;SY.ready=false;SY.state='noaccess';lsSet('wedding-shared','');updSync();refreshShareUI();return;}
@@ -626,17 +640,17 @@ async function syncConnect(){
     SY.since=pl.now-1000;SY.on=true;SY.ready=true;SY.state='ok';SY.okAt=Date.now();S.tg=false;mode='shared';lsSet('wedding-shared','1');setRole(SY.role);if(SY.ro){SY.pending={};savePending();}
     ensureTasks();fixMissing();render();refreshShareUI();
     if(h.joined)if(SY.owner)toast('Общий планер создан — вы организатор.');
-    syncPush();uploadPendingImgs();
+    syncPush();uploadPendingImgs();try{webApprovePrompt();}catch(e){}
   }catch(e){SY.state='err';SY.err=e.code||String(e&&e.message||e);}
   updSync();}
-function updSync(){const b=$('#openSettings');if(b){const st2=!(TGA&&SYNC_URL)||SY.state==='noaccess'?'':SY.state==='err'?'err':!SY.ready||Object.keys(SY.pending).length||SY.busy?'wait':'ok';if(st2)b.dataset.sync=st2;else delete b.dataset.sync;}
+function updSync(){const b=$('#openSettings');if(b){const st2=!(AUTH()&&SYNC_URL)||SY.state==='noaccess'?'':SY.state==='err'?'err':!SY.ready||Object.keys(SY.pending).length||SY.busy?'wait':'ok';if(st2)b.dataset.sync=st2;else delete b.dataset.sync;}
   const el=$('#syncStatus');if(el)el.textContent=syncText();}
 function syncText(){if(SY.state==='noaccess')return 'Доступ к планеру закрыт.';
   if(!SY.ready)return SY.on?'Нет связи с сервером. Изменения сохранены на телефоне и отправятся, когда связь появится.':'Подключаюсь…';
   if(SY.state==='err')return 'Нет связи с сервером. Изменения сохранены на телефоне и отправятся позже.';
   const n=Object.keys(SY.pending).length;if(n||SY.busy)return 'Отправляю изменения…';
   return 'Всё синхронизировано'+(SY.okAt?' · '+new Date(SY.okAt).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'}):'');}
-function shareCard(){if(!(TGA&&SYNC_URL))return '';if(SY.ready&&!ownerUI())return '';
+function shareCard(){if(!(AUTH()&&SYNC_URL))return '';if(SY.ready&&!ownerUI())return '';
   let h='<section class="card" id="shareCard"><div class="h"><h2>Участники</h2>'+(SY.ready?'<span class="pill p-good">синхронизация включена</span>':'')+'</div>';
   if(SY.state==='noaccess')return h+'<p class="small" style="margin:0;color:var(--txt-2)">Доступ к планеру закрыт.</p></section>';
   h+='<p class="small" id="syncStatus" style="margin:0 0 10px;color:var(--txt-2)">'+esc(syncText())+'</p>';
@@ -672,12 +686,50 @@ async function openBackups(){loadingSheet('Резервные копии');try{c
    '<p class="small muted" style="margin:0">Копии лежат файлами в папке «Свадьба — резервные копии» на Google Диске. Перед восстановлением автоматически сохраняется копия текущего состояния — откат тоже можно отменить.</p></div>');}
   catch(e){openSheet(top('Резервные копии')+'<div class="stack"><section class="card"><div class="empty">Не получилось загрузить. Проверьте интернет и что скрипт на Google обновлён и setup выполнен ещё раз.</div></section></div>');}}
 function refreshShareUI(){const el=$('#shareCard');if(el)el.outerHTML=shareCard();}
-function startSync(){if(!TGA||!SYNC_URL)return;
+function startSync(){if(!AUTH()||!SYNC_URL)return;
   Object.keys(JSON.parse(lsGet('wedding-pending')||'[]').reduce((o,k)=>(o[k]=1,o),{})).forEach(k=>{SY.pending[k]=++SY.seq;});
   if(lsGet('wedding-shared')==='1'){SY.on=true;mode='shared';}
   updSync();syncConnect();
   setInterval(()=>{if(document.hidden)return;if(!SY.ready){if(SY.on||SY.state==='err')syncConnect();return;}syncPull();if(++SY.tick%3===0)refreshHello();syncPush();uploadPendingImgs();},20000);
   document.addEventListener('visibilitychange',()=>{if(document.hidden)return;if(SY.ready){syncPull();refreshHello();}else if(SY.on)syncConnect();});}
+/* ---------- вход в браузере через Telegram: планер как веб-приложение на экране «Домой» ---------- */
+const WL={secret:'',code:'',pin:'',bot:'',err:'',timer:0,busy:false,polling:false};
+const hexOf=buf=>Array.from(new Uint8Array(buf)).map(b=>('0'+b.toString(16)).slice(-2)).join('');
+const pinOf=code=>('000'+(parseInt(String(code).slice(0,8),16)%10000)).slice(-4);
+function webUA(){const u=navigator.userAgent||'';return (/iPhone/.test(u)?'iPhone':/iPad/.test(u)?'iPad':/Android/.test(u)?'Android':/Mac/.test(u)?'Mac':/Windows/.test(u)?'Windows':'Браузер');}
+function webWipe(){try{Object.keys(localStorage).forEach(k=>{if(k!=='wedding-theme')localStorage.removeItem(k);});}catch(e){}WEBTOK='';}
+async function webLoginInit(force){if(WL.busy)return;WL.busy=true;WL.err='';
+  try{let sv=null;try{sv=JSON.parse(lsGet('wedding-weblogin')||'null');}catch(e){}
+    if(!force&&sv&&sv.secret&&Date.now()-sv.at<13*60000){WL.secret=sv.secret;WL.code=sv.code;}
+    else{const b=new Uint8Array(32);crypto.getRandomValues(b);WL.secret=hexOf(b);WL.code=hexOf(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(WL.secret))).slice(0,16);lsSet('wedding-weblogin',JSON.stringify({secret:WL.secret,code:WL.code,at:Date.now()}));}
+    WL.pin=pinOf(WL.code);const r=await api('web_start',{code:WL.code});WL.bot=r.bot||'';
+  }catch(e){WL.err=e&&(e.code==='bad_op'||e.code==='auth')?'Сервер ещё не обновлён — вход в браузере появится после обновления.':'Нет связи с сервером. Проверьте интернет и попробуйте ещё раз.';}
+  WL.busy=false;if(webGate())render();
+  if(!WL.timer){WL.timer=setInterval(()=>{if(!document.hidden)webLoginPoll();},2500);document.addEventListener('visibilitychange',()=>{if(!document.hidden)webLoginPoll();});}}
+async function webLoginPoll(){if(!webGate()||!WL.secret||WL.polling||WL.err)return;WL.polling=true;
+  try{const r=await api('web_poll',{secret:WL.secret,ua:webUA()});
+    if(r.token){lsSet('wedding-webtok',r.token);lsSet('wedding-weblogin','');lsSet('wedding-weblocal','');lsSet('wedding-shared','1');location.reload();return;}
+    if(r.pending&&!r.alive){WL.polling=false;await webLoginInit(true);return;}
+  }catch(e){}WL.polling=false;}
+function webLoginHTML(){if(!WL.secret&&!WL.busy&&!WL.err)setTimeout(()=>webLoginInit(),0);const ok=WL.bot&&WL.code&&!WL.err;
+  return '<section class="hero" style="text-align:center"><img src="apple-touch-icon.png" alt="" width="84" height="84" style="border-radius:20px;display:block;margin:0 auto 10px;position:relative"><div class="names">Наша свадьба</div><div class="when">Войдите через Telegram — и здесь откроется общий планер: подрядчики, платежи, гости и чек-лист.</div></section>'+
+   '<section class="card"><div class="stack" style="gap:14px">'+
+   (WL.err?'<p class="small" style="margin:0;text-align:center">'+WL.err+'</p><button type="button" class="btn primary block" data-act="webretry" style="min-height:52px">Повторить</button>'
+    :ok?'<a class="btn primary block" style="text-decoration:none;min-height:52px;justify-content:center" href="tg://resolve?domain='+esc(WL.bot)+'&startapp=web_'+WL.code+'">Войти через Telegram</a>'+
+      '<div style="text-align:center"><div class="small muted">Код подтверждения</div><div class="wl-pin">'+WL.pin+'</div><div class="small muted">В Telegram откроется планер с таким же кодом. Нажмите там «Разрешить вход» и вернитесь сюда — вход произойдёт сам.</div></div>'+
+      '<a class="small" style="text-align:center;color:var(--accent-ink)" href="https://t.me/'+esc(WL.bot)+'?startapp=web_'+WL.code+'" target="_blank" rel="noopener">Telegram не открылся? Нажмите здесь</a>'
+    :'<div style="text-align:center" class="small muted">Готовлю вход…</div>')+
+   '</div></section><p class="small muted" style="text-align:center"><button type="button" style="background:none;border:0;padding:0;font:inherit;color:var(--accent-ink);text-decoration:underline;cursor:pointer" data-act="weblocal">Продолжить без входа</button><br>Тогда планер будет пустой и только на этом устройстве.</p>';}
+/* в Telegram: подтверждение входа, который начали в браузере */
+function webApprovePrompt(){if(!TGA||webApprovePrompt.done)return;const sp=String((TGA.initDataUnsafe&&TGA.initDataUnsafe.start_param)||'');const m=sp.match(/^web_([0-9a-f]{16})$/);if(!m)return;webApprovePrompt.done=1;WL.code=m[1];
+  openSheet(top('Вход в браузере')+'<div class="stack"><section class="card" style="text-align:center"><p style="margin:0 0 8px">Планер открыли в браузере и хотят войти под вашим именем. Если это вы — сверьте код:</p><div class="wl-pin">'+pinOf(m[1])+'</div><p class="small muted" style="margin:8px 0 0">Код должен совпадать с тем, что показан в браузере. Если вы ничего не открывали — нажмите «Отмена».</p></section>'+
+   '<button type="button" class="btn primary block" data-act="webok" style="min-height:52px">Разрешить вход</button><button type="button" class="btn block" data-close>Отмена</button></div>');}
+function webSlot(){const box=$('#webSlot');if(!box)return;
+  if(!TGA){if(WEBTOK)box.innerHTML='<section class="card"><div class="h"><h2>Вход через Telegram</h2></div><p class="small muted" style="margin:0 0 10px">Вы вошли как <b>'+esc((SY.me&&SY.me.name)||'…')+'</b>. Данные те же, что в Telegram.</p><button type="button" class="btn block" data-act="weblogout">Выйти на этом устройстве</button></section>';return;}
+  if(!SY.ready)return;const url=location.href.split(/[?#]/)[0];
+  api('web_list').then(r=>{const ss=r.sessions||[];
+    box.innerHTML='<section class="card"><div class="h"><h2>Значок на экране «Домой»</h2></div><p class="small muted" style="margin:0 0 8px">Планер можно открывать как отдельное приложение, без Telegram:</p><ol class="small" style="margin:0;padding-left:20px"><li>Откройте в Safari ссылку <button type="button" style="background:none;border:0;padding:0;font:inherit;color:var(--accent-ink);text-decoration:underline;cursor:pointer" data-copylink="'+esc(url)+'">скопировать</button><br><span class="muted">'+esc(url.replace(/^https?:\/\//,''))+'</span></li><li>«Поделиться» → «На экран „Домой“».</li><li>Откройте значок и нажмите «Войти через Telegram».</li></ol>'+
+     (ss.length?'<p class="small" style="margin:10px 0 8px">Вход выполнен: '+ss.map(x=>esc(x.ua||'устройство')+' · '+new Date(x.at).toLocaleDateString('ru-RU',{day:'numeric',month:'short'}).replace(/\.$/,'')).join(', ')+'.</p><button type="button" class="btn sm" data-act="webrevoke">Выйти на всех устройствах</button>':'')+'</section>';}).catch(()=>{});}
 /* фото на Диске организатора */
 const upBusy={},rIn={};
 async function uploadImg(vid,id,full,thumb){if(!SY.ready||upBusy[id])return;upBusy[id]=1;
@@ -718,6 +770,7 @@ async function initStore(){
       }
     }else mode='local';
     startSync();
+  }else if(WEBTOK){mode='local';startSync();   // в браузере после входа через Telegram
   }else if(window.claude&&window.claude.use){
     try{const db=await window.claude.use('db');
       if(db){S.db=db;mode='cloud';const snap=await db.collection('w').get();if(!snap.empty){const docs={};snap.docs.forEach(d=>docs[d.id]=d.data());applyDocs(docs);}else if(hasData())pushAll();}
@@ -810,6 +863,8 @@ const checkBtn=(on,attrs,cls)=>'<button type="button" class="check '+(cls||'')+(
 /* ---------- Экраны ---------- */
 const view=$('#view');
 function render(){
+  document.body.classList.toggle('gate',webGate());
+  if(webGate()){view.innerHTML=webLoginHTML();return;}
   $('#brandSub').textContent=(st.cfg.n1||st.cfg.n2)?[st.cfg.n1,st.cfg.n2].filter(Boolean).join(' & '):'План, подрядчики и платежи';
   document.querySelectorAll('.tab').forEach(b=>b.setAttribute('aria-selected',String(b.dataset.tab===tab)));
   const over=allPays().filter(x=>!x.p.paid&&x.d!=null&&x.d<0).length;
@@ -1063,9 +1118,10 @@ function openSettings(){refreshHello();
    '<section class="card"><div class="h"><h2>Свадьба</h2></div><div class="stack" style="gap:10px"><div class="grid2">'+f('n1','Имя','text','Марина')+f('n2','Имя','text','Олег')+'</div><div class="grid2">'+f('date','Дата свадьбы','date')+f('city','Город','text','Гомель')+'</div><div class="grid2">'+f('budget','Бюджет','number','0')+f('guests','Гостей','number','0')+'</div>'+
    '</div></section>'+ratesCard()+
    '<section class="card"><div class="h"><h2>Оформление</h2></div><div class="seg" role="group" aria-label="Тема">'+[['auto','Как в системе'],['light','Светлая'],['dark','Тёмная']].map(([k,l])=>'<button type="button" data-theme-set="'+k+'" aria-pressed="'+((localTheme()||'auto')===k)+'">'+l+'</button>').join('')+'</div></section>'+
-   shareCard()+protectCard()+'<section class="card"><div class="h"><h2>Данные</h2></div><div class="row"><button type="button" class="btn sm" data-act="copyjson">Скопировать резервную копию</button>'+(SY.ready&&!ownerUI()?'':'<button type="button" class="btn sm" data-act="pastejson">Вставить из копии</button>')+'</div><div class="fld" id="pasteBox" hidden style="margin-top:10px"><label for="pasteArea">Вставьте текст резервной копии</label><textarea id="pasteArea"></textarea><div class="row" style="margin-top:8px"><button type="button" class="btn primary sm" data-act="doimport">Загрузить</button></div></div></section>'+
+   shareCard()+'<div id="webSlot"></div>'+protectCard()+'<section class="card"><div class="h"><h2>Данные</h2></div><div class="row"><button type="button" class="btn sm" data-act="copyjson">Скопировать резервную копию</button>'+(SY.ready&&!ownerUI()?'':'<button type="button" class="btn sm" data-act="pastejson">Вставить из копии</button>')+'</div><div class="fld" id="pasteBox" hidden style="margin-top:10px"><label for="pasteArea">Вставьте текст резервной копии</label><textarea id="pasteArea"></textarea><div class="row" style="margin-top:8px"><button type="button" class="btn primary sm" data-act="doimport">Загрузить</button></div></div></section>'+
    (hasData()?'<section class="card"><div class="h"><h2>Пример</h2></div><div class="row"><button type="button" class="btn sm" data-act="demo">Заполнить примером</button>'+(SY.ready&&!ownerUI()?'':'<button type="button" class="btn sm danger" data-act="wipe">Удалить всё</button>')+'</div></section>':'')+
    '</div>');
+  webSlot();
 }
 
 function ratesCard(){const auto=RT.ratesMode!=='manual';
@@ -1215,6 +1271,11 @@ document.addEventListener('click',e=>{
     else if(a==='gdel'){const g=st.guests[sheetGuest];if(!g)return;confirmBox({title:'Удалить гостя?',text:'«'+esc(g.name||'Без имени')+'» пропадёт из списка'+(SY.ready?' у всех участников':'')+'.',onOk:()=>{delete st.guests[g.id];persist('g',g.id);closeSheet();toast('Гость удалён.');}});}
     else if(a==='rmdemo'){const dv=demoVendors();confirmBox({title:'Убрать примеры?',text:'Удалим '+dv.length+' '+plural(dv.length,'подрядчика','подрядчиков','подрядчиков')+' с пометкой «(пример)». Ваши записи не тронем.',ok:'Убрать',onOk:()=>{dv.forEach(removeVendor);render();toast('Примеры убраны.');}});}
     else if(a==='syncretry'){SY.state='';updSync();syncConnect();}
+    else if(a==='webretry'){WL.err='';WL.secret='';render();}
+    else if(a==='weblocal'){try{localStorage.setItem('wedding-weblocal','1');}catch(e){}render();}
+    else if(a==='webok'){el.disabled=true;api('web_approve',{code:WL.code}).then(()=>{closeSheet();toast('Готово. Вернитесь в браузер — планер откроется сам.');}).catch(e=>{el.disabled=false;toast(e.code==='expired'?'Код устарел. В браузере нажмите «Войти через Telegram» ещё раз.':e.code==='not_member'?'Сначала откройте планер в Telegram.':e.code==='bad_op'?'Сервер ещё не обновлён.':'Не получилось — проверьте интернет.');});}
+    else if(a==='weblogout'){api('web_revoke',{self:true}).catch(()=>{}).then(()=>{webWipe();location.reload();});}
+    else if(a==='webrevoke'){api('web_revoke',{all:true}).then(()=>{toast('Готово: вход в браузере закрыт на всех устройствах.');webSlot();}).catch(()=>toast('Не получилось — проверьте интернет.'));}
     else if(a==='invite'){el.disabled=true;el.textContent='Создаю ссылку…';const irole=el.dataset.irole||'editor';const lbl=el.textContent;api('invite',{role:irole}).then(r=>{const link='https://t.me/'+(r.bot||SY.bot)+'?startapp=join_'+r.code;const box=$('#inviteBox');
         if(box){box.hidden=false;box.innerHTML='<div class="withbtn"><input class="inp" readonly value="'+esc(link)+'" aria-label="Ссылка-приглашение"><button type="button" class="iconbtn" data-copylink="'+esc(link)+'" aria-label="Скопировать" style="height:44px;width:44px">'+ICON.copy+'</button></div>';}
         try{TGA.openTelegramLink('https://t.me/share/url?url='+encodeURIComponent(link)+'&text='+encodeURIComponent(irole==='viewer'?'Приглашение посмотреть свадебный планер — откройте ссылку в Telegram':'Приглашение в общий свадебный планер — откройте ссылку в Telegram'));}catch(e){}
