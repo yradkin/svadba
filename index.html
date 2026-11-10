@@ -723,6 +723,8 @@ function webLoginHTML(){if(!WL.secret&&!WL.busy&&!WL.err)setTimeout(()=>webLogin
    '</div></section><p class="small muted" style="text-align:center"><button type="button" style="background:none;border:0;padding:0;font:inherit;color:var(--accent-ink);text-decoration:underline;cursor:pointer" data-act="weblocal">Продолжить без входа</button><br>Тогда планер будет пустой и только на этом устройстве.</p>';}
 /* в Telegram: подтверждение входа, который начали в браузере */
 function webApprovePrompt(){if(!TGA||webApprovePrompt.done)return;const sp=String((TGA.initDataUnsafe&&TGA.initDataUnsafe.start_param)||'');const m=sp.match(/^web_([0-9a-f]{16})$/);if(!m)return;webApprovePrompt.done=1;WL.code=m[1];
+  const seen=(lsGet('wedding-webseen')||'').split(',').filter(Boolean);if(seen.includes(m[1]))return;   // Telegram может повторно открыть планер с тем же кодом — второй раз не спрашиваем
+  seen.push(m[1]);lsSet('wedding-webseen',seen.slice(-10).join(','));
   openSheet(top('Вход в браузере')+'<div class="stack"><section class="card" style="text-align:center"><p style="margin:0 0 8px">Планер открыли в браузере и хотят войти под вашим именем. Если это вы — сверьте код:</p><div class="wl-pin">'+pinOf(m[1])+'</div><p class="small muted" style="margin:8px 0 0">Код должен совпадать с тем, что показан в браузере. Если вы ничего не открывали — нажмите «Отмена».</p></section>'+
    '<button type="button" class="btn primary block" data-act="webok" style="min-height:52px">Разрешить вход</button><button type="button" class="btn block" data-close>Отмена</button></div>');}
 function webSlot(){const box=$('#webSlot');if(!box)return;
