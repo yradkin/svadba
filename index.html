@@ -712,7 +712,12 @@ async function webLoginPoll(){if(!webGate()||!WL.secret||WL.polling||WL.err)retu
     if(r.token){lsSet('wedding-webtok',r.token);lsSet('wedding-weblogin','');lsSet('wedding-weblocal','');lsSet('wedding-shared','1');location.reload();return;}
     if(r.pending&&!r.alive){WL.polling=false;await webLoginInit(true);return;}
   }catch(e){}WL.polling=false;}
-function webLoginHTML(){if(!WL.secret&&!WL.busy&&!WL.err)setTimeout(()=>webLoginInit(),0);const ok=WL.bot&&WL.code&&!WL.err;
+/* на iPhone значок «Домой» и Safari помнят вход раздельно — в Safari сначала предлагаем поставить значок, чтобы входить один раз */
+const IOS_TAB=/iPhone|iPad|iPod/.test(navigator.userAgent)&&navigator.standalone!==true&&!(window.matchMedia&&matchMedia('(display-mode: standalone)').matches);
+function webLoginHTML(){if(IOS_TAB&&lsGet('wedding-webtab')!=='1')return '<section class="hero" style="text-align:center"><img src="apple-touch-icon.png" alt="" width="84" height="84" style="border-radius:20px;display:block;margin:0 auto 10px;position:relative"><div class="names">Наша свадьба</div><div class="when">Поставьте планер значком на экран — и открывайте его как обычное приложение.</div></section>'+
+   '<section class="card"><ol style="margin:0;padding-left:22px;line-height:1.6"><li>Внизу Safari нажмите «Поделиться» — квадрат со стрелкой вверх.</li><li>Выберите «На экран „Домой“» → «Добавить».</li><li>Откройте новый значок и там нажмите «Войти через Telegram».</li></ol><p class="small muted" style="margin:10px 0 0">Входить нужно именно из значка: iPhone хранит вход значка и Safari отдельно.</p></section>'+
+   '<p class="small muted" style="text-align:center"><button type="button" style="background:none;border:0;padding:0;font:inherit;color:var(--accent-ink);text-decoration:underline;cursor:pointer" data-act="webtab">Войти здесь, в Safari</button></p>';
+  if(!WL.secret&&!WL.busy&&!WL.err)setTimeout(()=>webLoginInit(),0);const ok=WL.bot&&WL.code&&!WL.err;
   return '<section class="hero" style="text-align:center"><img src="apple-touch-icon.png" alt="" width="84" height="84" style="border-radius:20px;display:block;margin:0 auto 10px;position:relative"><div class="names">Наша свадьба</div><div class="when">Войдите через Telegram — и здесь откроется общий планер: подрядчики, платежи, гости и чек-лист.</div></section>'+
    '<section class="card"><div class="stack" style="gap:14px">'+
    (WL.err?'<p class="small" style="margin:0;text-align:center">'+WL.err+'</p><button type="button" class="btn primary block" data-act="webretry" style="min-height:52px">Повторить</button>'
@@ -1275,6 +1280,7 @@ document.addEventListener('click',e=>{
     else if(a==='rmdemo'){const dv=demoVendors();confirmBox({title:'Убрать примеры?',text:'Удалим '+dv.length+' '+plural(dv.length,'подрядчика','подрядчиков','подрядчиков')+' с пометкой «(пример)». Ваши записи не тронем.',ok:'Убрать',onOk:()=>{dv.forEach(removeVendor);render();toast('Примеры убраны.');}});}
     else if(a==='syncretry'){SY.state='';updSync();syncConnect();}
     else if(a==='webretry'){WL.err='';WL.secret='';render();}
+    else if(a==='webtab'){lsSet('wedding-webtab','1');render();}
     else if(a==='weblocal'){try{localStorage.setItem('wedding-weblocal','1');}catch(e){}render();}
     else if(a==='webok'){el.disabled=true;api('web_approve',{code:WL.code}).then(()=>{closeSheet();toast('Готово. Вернитесь в браузер — планер откроется сам.');}).catch(e=>{el.disabled=false;toast(e.code==='expired'?'Код устарел. В браузере нажмите «Войти через Telegram» ещё раз.':e.code==='not_member'?'Сначала откройте планер в Telegram.':e.code==='bad_op'?'Сервер ещё не обновлён.':'Не получилось — проверьте интернет.');});}
     else if(a==='weblogout'){api('web_revoke',{self:true}).catch(()=>{}).then(()=>{webWipe();location.reload();});}
