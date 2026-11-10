@@ -693,6 +693,7 @@ function startSync(){if(!AUTH()||!SYNC_URL)return;
   setInterval(()=>{if(document.hidden)return;if(!SY.ready){if(SY.on||SY.state==='err')syncConnect();return;}syncPull();if(++SY.tick%3===0)refreshHello();syncPush();uploadPendingImgs();},20000);
   document.addEventListener('visibilitychange',()=>{if(document.hidden)return;if(SY.ready){syncPull();refreshHello();}else if(SY.on)syncConnect();});}
 /* ---------- вход в браузере через Telegram: планер как веб-приложение на экране «Домой» ---------- */
+const WEB_APPNAME='plan';   // мини-приложение бота: t.me/<бот>/plan
 const WL={secret:'',code:'',pin:'',bot:'',err:'',timer:0,busy:false,polling:false};
 const hexOf=buf=>Array.from(new Uint8Array(buf)).map(b=>('0'+b.toString(16)).slice(-2)).join('');
 const pinOf=code=>('000'+(parseInt(String(code).slice(0,8),16)%10000)).slice(-4);
@@ -715,9 +716,9 @@ function webLoginHTML(){if(!WL.secret&&!WL.busy&&!WL.err)setTimeout(()=>webLogin
   return '<section class="hero" style="text-align:center"><img src="apple-touch-icon.png" alt="" width="84" height="84" style="border-radius:20px;display:block;margin:0 auto 10px;position:relative"><div class="names">Наша свадьба</div><div class="when">Войдите через Telegram — и здесь откроется общий планер: подрядчики, платежи, гости и чек-лист.</div></section>'+
    '<section class="card"><div class="stack" style="gap:14px">'+
    (WL.err?'<p class="small" style="margin:0;text-align:center">'+WL.err+'</p><button type="button" class="btn primary block" data-act="webretry" style="min-height:52px">Повторить</button>'
-    :ok?'<a class="btn primary block" style="text-decoration:none;min-height:52px;justify-content:center" href="tg://resolve?domain='+esc(WL.bot)+'&startapp=web_'+WL.code+'">Войти через Telegram</a>'+
+    :ok?'<a class="btn primary block" style="text-decoration:none;min-height:52px;justify-content:center" href="tg://resolve?domain='+esc(WL.bot)+'&appname='+WEB_APPNAME+'&startapp=web_'+WL.code+'">Войти через Telegram</a>'+
       '<div style="text-align:center"><div class="small muted">Код подтверждения</div><div class="wl-pin">'+WL.pin+'</div><div class="small muted">В Telegram откроется планер с таким же кодом. Нажмите там «Разрешить вход» и вернитесь сюда — вход произойдёт сам.</div></div>'+
-      '<a class="small" style="text-align:center;color:var(--accent-ink)" href="https://t.me/'+esc(WL.bot)+'?startapp=web_'+WL.code+'" target="_blank" rel="noopener">Telegram не открылся? Нажмите здесь</a>'
+      '<a class="small" style="text-align:center;color:var(--accent-ink)" href="https://t.me/'+esc(WL.bot)+'/'+WEB_APPNAME+'?startapp=web_'+WL.code+'" target="_blank" rel="noopener">Telegram не открылся? Нажмите здесь</a>'
     :'<div style="text-align:center" class="small muted">Готовлю вход…</div>')+
    '</div></section><p class="small muted" style="text-align:center"><button type="button" style="background:none;border:0;padding:0;font:inherit;color:var(--accent-ink);text-decoration:underline;cursor:pointer" data-act="weblocal">Продолжить без входа</button><br>Тогда планер будет пустой и только на этом устройстве.</p>';}
 /* в Telegram: подтверждение входа, который начали в браузере */
@@ -1276,7 +1277,7 @@ document.addEventListener('click',e=>{
     else if(a==='webok'){el.disabled=true;api('web_approve',{code:WL.code}).then(()=>{closeSheet();toast('Готово. Вернитесь в браузер — планер откроется сам.');}).catch(e=>{el.disabled=false;toast(e.code==='expired'?'Код устарел. В браузере нажмите «Войти через Telegram» ещё раз.':e.code==='not_member'?'Сначала откройте планер в Telegram.':e.code==='bad_op'?'Сервер ещё не обновлён.':'Не получилось — проверьте интернет.');});}
     else if(a==='weblogout'){api('web_revoke',{self:true}).catch(()=>{}).then(()=>{webWipe();location.reload();});}
     else if(a==='webrevoke'){api('web_revoke',{all:true}).then(()=>{toast('Готово: вход в браузере закрыт на всех устройствах.');webSlot();}).catch(()=>toast('Не получилось — проверьте интернет.'));}
-    else if(a==='invite'){el.disabled=true;el.textContent='Создаю ссылку…';const irole=el.dataset.irole||'editor';const lbl=el.textContent;api('invite',{role:irole}).then(r=>{const link='https://t.me/'+(r.bot||SY.bot)+'?startapp=join_'+r.code;const box=$('#inviteBox');
+    else if(a==='invite'){el.disabled=true;el.textContent='Создаю ссылку…';const irole=el.dataset.irole||'editor';const lbl=el.textContent;api('invite',{role:irole}).then(r=>{const link='https://t.me/'+(r.bot||SY.bot)+'/plan?startapp=join_'+r.code;const box=$('#inviteBox');
         if(box){box.hidden=false;box.innerHTML='<div class="withbtn"><input class="inp" readonly value="'+esc(link)+'" aria-label="Ссылка-приглашение"><button type="button" class="iconbtn" data-copylink="'+esc(link)+'" aria-label="Скопировать" style="height:44px;width:44px">'+ICON.copy+'</button></div>';}
         try{TGA.openTelegramLink('https://t.me/share/url?url='+encodeURIComponent(link)+'&text='+encodeURIComponent(irole==='viewer'?'Приглашение посмотреть свадебный планер — откройте ссылку в Telegram':'Приглашение в общий свадебный планер — откройте ссылку в Telegram'));}catch(e){}
       }).catch(e=>toast(e.code==='owner_only'?'Приглашать может только организатор.':'Не удалось создать ссылку, проверьте интернет.')).finally(()=>{el.disabled=false;el.textContent=lbl;});}
