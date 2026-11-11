@@ -497,6 +497,25 @@ body.dragmode{-webkit-user-select:none;user-select:none}
 .legend i.lg-paid{background:linear-gradient(90deg,#6E4A33,#A9876A)} .legend i.lg-left{background:linear-gradient(90deg,#E2C69A,#CFAE8C)}
 :root[data-theme="dark"] .legend i.lg-paid{background:linear-gradient(90deg,#C9A06A,#F3DDB2)} :root[data-theme="dark"] .legend i.lg-left{background:linear-gradient(90deg,#7A5038,#9A6C4E)}
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .legend i.lg-paid{background:linear-gradient(90deg,#C9A06A,#F3DDB2)}:root:not([data-theme="light"]) .legend i.lg-left{background:linear-gradient(90deg,#7A5038,#9A6C4E)}}
+/* итог по свадьбе: подрядчики + банкет */
+.tot{border-top:1px solid var(--line);padding-top:12px;margin-top:14px}
+.tot .h3{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--txt-3)}
+.tot .ln .small{color:var(--txt-2)}
+.tot .ln.grand b{font-size:26px;background:var(--num-grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+.tot .ln.grand .small{font-weight:700;color:var(--txt)}
+.tot .link{background:none;border:0;padding:0;font:inherit;color:var(--accent);text-decoration:underline;cursor:pointer}
+.bar .bq,.legend i.lg-bq{background:repeating-linear-gradient(135deg,#CDB08F 0 5px,#B8946F 5px 10px)}
+:root[data-theme="dark"] .bar .bq,:root[data-theme="dark"] .legend i.lg-bq{background:repeating-linear-gradient(135deg,#5E4430 0 5px,#4A3424 5px 10px)}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .bar .bq,:root:not([data-theme="light"]) .legend i.lg-bq{background:repeating-linear-gradient(135deg,#5E4430 0 5px,#4A3424 5px 10px)}}
+.mk.wide{grid-column:1 / -1;display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.mk .s{font-size:11.5px;color:var(--txt-3);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mk.wide .s{margin:0;text-align:right}
+.bqinfo{margin-top:12px;font-size:13px;color:var(--txt-2);display:flex;justify-content:space-between;gap:10px;align-items:baseline}
+.bqinfo b{color:var(--txt);white-space:nowrap;font-variant-numeric:tabular-nums}
+.bqinfo .link{background:none;border:0;padding:0;font:inherit;color:var(--accent);text-decoration:underline;cursor:pointer}
+.bqpaid{display:flex;align-items:center;gap:8px;color:var(--good);font-weight:700}
+.bqform{display:flex;flex-direction:column;gap:10px;margin-top:6px}
+body.ro .bqedit{display:none!important}
 
 </style>
 <div class="aura" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
@@ -962,16 +981,30 @@ function heroHTML(){
   else count='<div class="count"><button type="button" class="btn sm" data-act="settings">Указать дату и имена</button></div>';
   return '<section class="hero"><svg class="rings" viewBox="0 0 100 100" aria-hidden="true"><circle cx="40" cy="55" r="26"/><circle cx="60" cy="55" r="26"/></svg><div class="names">'+esc(names)+'</div><div class="when">'+(c.date?esc(fmtDL(c.date)):'Дата пока не выбрана')+(c.city?' · '+esc(c.city):'')+((()=>{const n=Object.keys(st.guests).length?Object.keys(st.guests).length+2:+c.guests;return n?' · '+n+' '+plural(n,'гость','гостя','гостей'):'';})())+'</div>'+count+'</section>';
 }
+/* банкет: оценка по подтвердившим или итоговая оплаченная сумма */
+function banqState(){const gs=guestStats(),A=+st.cfg.menuA||0,paid=+st.cfg.bqPaid||0;
+  const est=A?menuCost(gs.okA,gs.okK):0;return {gs,A,paid,est,cost:paid||est,all:A?menuCost(gs.adults,gs.kids):0};}
 function moneyHTML(){
-  const t=totals();const base=Math.max(t.budget,t.contracted,1);
-  const over=t.budget&&t.contracted>t.budget;
-  return '<section class="card"><div class="h"><h2>Деньги</h2>'+(over?'<span class="pill p-crit">Выше бюджета на '+money(t.contracted-t.budget)+'</span>':'')+'</div>'+
-  '<div class="money"><div class="mk"><div class="k">Бюджет</div><div class="v">'+(t.budget?money(t.budget):'—')+'</div></div>'+
-  '<div class="mk"><div class="k">Договорено</div><div class="v">'+money(t.contracted)+'</div></div>'+
-  '<div class="mk"><div class="k">Внесено</div><div class="v" style="color:var(--good)">'+money(t.paid)+'</div></div>'+
-  '<div class="mk hl"><div class="k">Осталось внести</div><div class="v">'+money(t.left)+'</div></div></div>'+
-  '<div class="bar" aria-hidden="true"><i class="paid" style="width:'+(t.paid/base*100).toFixed(1)+'%"></i><i class="left" style="width:'+(t.left/base*100).toFixed(1)+'%"></i></div>'+
-  '<div class="legend"><span><i class="lg-paid"></i>внесено</span><span><i class="lg-left"></i>осталось по договорам</span>'+(t.budget?'<span>шкала — бюджет</span>':'')+'</div>'+(usedRates().length?'<button type="button" class="ratesline" data-act="settings"><b>'+usedRates().map(rateTxt).join(' · ')+'</b> · сегодня, '+ratesNote(true)+' · суммы по курсу на день ввода</button>':'')+'</section>';
+  const t=totals(),b=banqState(),gs=b.gs;
+  const all=t.contracted+b.cost,paidAll=t.paid+b.paid;
+  const base=Math.max(t.budget,all,1);
+  const over=t.budget&&all>t.budget;
+  const ppl=(gs.okA+gs.okK+2)+' '+plural(gs.okA+gs.okK+2,'гость','гостя','гостей');
+  const bqUnpaid=b.paid?0:b.est;
+  return '<section class="card"><div class="h"><h2>Деньги</h2>'+(over?'<span class="pill p-crit">Выше бюджета на '+money(all-t.budget)+'</span>':'')+'</div>'+
+  '<div class="money">'+
+   '<div class="mk wide"><div><div class="k">Весь бюджет</div><div class="v">'+(t.budget?money(t.budget):'—')+'</div></div>'+(t.budget?'<div class="s">'+(over?'не хватает '+money(all-t.budget):'свободно '+money(t.budget-all))+'</div>':'<div class="s">задайте в настройках</div>')+'</div>'+
+   '<div class="mk hl"><div class="k">Все затраты</div><div class="v">'+money(all)+'</div><div class="s">подрядчики + банкет</div></div>'+
+   '<div class="mk"><div class="k">Подрядчики</div><div class="v">'+money(t.contracted)+'</div><div class="s">по договорам</div></div>'+
+   '<div class="mk"><div class="k">Внесено</div><div class="v" style="color:var(--good)">'+money(paidAll)+'</div><div class="s">'+(b.paid?'вместе с банкетом':'подрядчикам')+'</div></div>'+
+   '<div class="mk"><div class="k">Осталось внести</div><div class="v">'+money(t.left)+'</div><div class="s">подрядчикам</div></div>'+
+  '</div>'+
+  '<div class="bar" aria-hidden="true"><i class="paid" style="width:'+(paidAll/base*100).toFixed(1)+'%"></i><i class="left" style="width:'+(t.left/base*100).toFixed(1)+'%"></i>'+(bqUnpaid?'<i class="bq" style="width:'+(bqUnpaid/base*100).toFixed(1)+'%"></i>':'')+'</div>'+
+  '<div class="legend"><span><i class="lg-paid"></i>внесено</span><span><i class="lg-left"></i>осталось подрядчикам</span>'+(bqUnpaid?'<span><i class="lg-bq"></i>банкет</span>':'')+(t.budget?'<span>шкала — бюджет</span>':'')+'</div>'+
+  (b.paid?'<div class="bqinfo"><span>Банкет оплачен'+(st.cfg.bqPaidOn?' · '+fmtD(st.cfg.bqPaidOn):'')+'</span><b>'+money(b.paid)+'</b></div>'
+   :b.A?'<div class="bqinfo"><span>Банкет по подтвердившим · '+ppl+(b.all!==b.est?'<br><span class="muted" style="font-size:12px">если придут все — '+money(b.all)+'</span>':'')+'</span><b>'+money(b.est)+'</b></div>'
+   :'<div class="bqinfo"><span>Банкет не учтён — укажите цену меню</span><button type="button" class="link" data-gotab="guests">На вкладку «Гости»</button></div>')+
+  (usedRates().length?'<button type="button" class="ratesline" data-act="settings"><b>'+usedRates().map(rateTxt).join(' · ')+'</b> · сегодня, '+ratesNote(true)+' · суммы по курсу на день ввода</button>':'')+'</section>';
 }
 function remindersList(limit){
   const items=[];
@@ -1091,9 +1124,16 @@ const SIDES={b:'сторона невесты',g:'сторона жениха',c
 function guestStats(){const a=Object.values(st.guests||{});const come=a.filter(g=>!g.no);const ad=come.filter(g=>!g.kid),kd=come.filter(g=>g.kid);
   return {all:a.length,adults:ad.length,kids:kd.length,ok:come.filter(g=>g.ok).length,okA:ad.filter(g=>g.ok).length,okK:kd.filter(g=>g.ok).length,no:a.length-come.length,wait:come.filter(g=>!g.ok).length};}
 function menuCost(adults,kids){return (adults+2)*(+st.cfg.menuA||0)+kids*(+st.cfg.menuK||0);}
-function banqHTML(){const s=guestStats(),A=+st.cfg.menuA||0,K=+st.cfg.menuK||0;
+function banqHTML(){const s=guestStats(),A=+st.cfg.menuA||0,K=+st.cfg.menuK||0,paid=+st.cfg.bqPaid||0;
   const ln=(lbl,ad,kd,main)=>'<div class="ln'+(main?' main':'')+'"><span class="small">'+lbl+'<br><span class="f">'+(ad+2)+' взр. × '+money(A)+(kd?' + '+kd+' дет. × '+money(K):'')+'</span></span><b>'+money(menuCost(ad,kd))+'</b></div>';
-  return ln('По подтвердившим',s.okA,s.okK,true)+ln('Если придут все приглашённые',s.adults,s.kids)+'<div class="f">Жених и невеста уже учтены как 2 взрослых.</div>';}
+  let h='';
+  if(paid)h+='<div class="ln main"><span class="small"><span class="bqpaid">✓ Банкет оплачен</span><span class="f">'+(st.cfg.bqPaidOn?fmtD(st.cfg.bqPaidOn)+' · ':'')+'эта сумма идёт в «Все затраты» и «Внесено»</span></span><b>'+money(paid)+'</b></div>'+
+    '<div class="row bqedit" style="gap:8px"><button type="button" class="btn sm" data-act="bqpay">Изменить сумму</button><button type="button" class="btn sm ghost" data-act="bqundo">Отменить оплату</button></div>';
+  if(A)h+=ln('По подтвердившим',s.okA,s.okK,!paid)+ln('Если придут все приглашённые',s.adults,s.kids);
+  h+='<div class="f">Жених и невеста уже учтены как 2 взрослых.</div>';
+  if(!paid)h+='<div class="bqedit"><button type="button" class="btn sm primary" data-act="bqpay">✓ Банкет оплачен — ввести итоговую сумму</button></div>';
+  h+='<div class="bqform bqedit" id="bqForm" hidden><div class="grid2"><div class="fld"><label for="bqSum">Итоговая сумма, '+CUR[base()]+'</label><input id="bqSum" type="number" inputmode="decimal" value="'+(paid||(A?Math.round(menuCost(s.okA,s.okK)):''))+'" placeholder="0"></div><div class="fld"><label for="bqDate">Дата оплаты</label><input id="bqDate" type="date" value="'+esc(st.cfg.bqPaidOn||ymd(today()))+'"></div></div><div class="row" style="gap:8px"><button type="button" class="btn sm primary" data-act="bqsave">Сохранить</button><button type="button" class="btn sm ghost" data-act="bqcancel">Отмена</button></div></div>';
+  return h;}
 function guestRow(g){const sub=[g.side&&SIDES[g.side]?SIDES[g.side]:'',g.no?'не придёт':g.ok?'точно будет':'ждём ответа'].filter(Boolean).join(' · ');
   return '<div class="li guest'+(g.no?' no':'')+'" data-gid="'+g.id+'">'+checkBtn(g.ok,'data-gok="'+g.id+'" aria-label="Подтвердил(а)"')+'<div data-gedit="'+g.id+'" style="min-width:0"><div class="t">'+esc(g.name||'Без имени')+(isFresh('g_'+g.id)?'<span class="fresh">новое</span>':'')+'</div><div class="s">'+esc(sub)+'</div></div><button type="button" class="kid'+(g.kid?' on':'')+'" data-gkid="'+g.id+'">'+(g.kid?'ребёнок':'взрослый')+'</button></div>';}
 function guestsHTML(){const s=guestStats();const A=st.cfg.menuA||'',K=st.cfg.menuK||'';
@@ -1232,7 +1272,7 @@ function buildReport(){
   // деньги
   h+='<h2>Деньги</h2><table class="kv">'+row(['Бюджет',t.budget?e(money(t.budget)):'не задан'])+row(['Договорено (выбранные подрядчики)',e(money(t.contracted))])+row(['Внесено','<span class="ok">'+e(money(t.paid))+'</span>'])+row(['Осталось внести',e(money(t.left))])+
      (t.budget&&t.contracted>t.budget?row(['Превышение бюджета','<span class="bad">'+e(money(t.contracted-t.budget))+'</span>']):'')+
-     (c.menuA?row(['Банкет по подтвердившим',e(money(menuCost(gs.okA,gs.okK)))])+row(['Банкет, если придут все',e(money(menuCost(gs.adults,gs.kids)))]):'')+'</table>';
+     (c.menuA?row(['Банкет по подтвердившим',e(money(menuCost(gs.okA,gs.okK)))])+row(['Банкет, если придут все',e(money(menuCost(gs.adults,gs.kids)))]):'')+(+st.cfg.bqPaid?row(['Банкет оплачен (итоговая сумма)',e(money(+st.cfg.bqPaid))]):'')+row(['Все затраты: подрядчики + банкет',e(money(t.contracted+banqState().cost))])+row(['Внесено с учётом банкета',e(money(t.paid+(+st.cfg.bqPaid||0)))])+'</table>';
   const ur=usedRates();if(ur.length)h+='<div class="s">Курс сегодня: '+e(ur.map(rateTxt).join(' · '))+'. Суммы в валюте пересчитаны по курсу на день ввода.</div>';
   // подрядчики
   h+='<h2>Подрядчики</h2>';
@@ -1348,6 +1388,10 @@ document.addEventListener('click',e=>{
     else if(a==='gbulkadd'){const ta=$('#gBulk');const added=addGuests((ta.value||'').split(/\n+/));if(added.length){render();toast('Добавлено гостей: '+added.length+'.');}}
     else if(a==='gdel'){const g=st.guests[sheetGuest];if(!g)return;confirmBox({title:'Удалить гостя?',text:'«'+esc(g.name||'Без имени')+'» пропадёт из списка'+(SY.ready?' у всех участников':'')+'.',onOk:()=>{delete st.guests[g.id];persist('g',g.id);closeSheet();toast('Гость удалён.');}});}
     else if(a==='rmdemo'){const dv=demoVendors();confirmBox({title:'Убрать примеры?',text:'Удалим '+dv.length+' '+plural(dv.length,'подрядчика','подрядчиков','подрядчиков')+' с пометкой «(пример)». Ваши записи не тронем.',ok:'Убрать',onOk:()=>{dv.forEach(removeVendor);render();toast('Примеры убраны.');}});}
+    else if(a==='bqpay'){const f=$('#bqForm');if(f){f.hidden=false;const i=$('#bqSum');if(i){i.focus();i.select();}}}
+    else if(a==='bqcancel'){const f=$('#bqForm');if(f)f.hidden=true;}
+    else if(a==='bqsave'){const v=+String(($('#bqSum')||{}).value||'').replace(',','.')||0;if(v<=0){toast('Введите итоговую сумму банкета.');return;}st.cfg.bqPaid=Math.round(v*100)/100;st.cfg.bqPaidOn=($('#bqDate')||{}).value||ymd(today());persist('cfg');const b=$('#banq');if(b)b.innerHTML=banqHTML();haptic('ok');toast('Банкет отмечен оплаченным: '+money(st.cfg.bqPaid)+'.');}
+    else if(a==='bqundo'){const was={p:st.cfg.bqPaid,d:st.cfg.bqPaidOn};delete st.cfg.bqPaid;delete st.cfg.bqPaidOn;persist('cfg');const b=$('#banq');if(b)b.innerHTML=banqHTML();toast('Оплата банкета отменена.','Вернуть',()=>{st.cfg.bqPaid=was.p;st.cfg.bqPaidOn=was.d;persist('cfg');const b2=$('#banq');if(b2)b2.innerHTML=banqHTML();});}
     else if(a==='syncretry'){SY.state='';updSync();syncConnect();}
     else if(a==='webretry'){WL.err='';WL.secret='';render();}
     else if(a==='webtab'){lsSet('wedding-webtab','1');render();}
