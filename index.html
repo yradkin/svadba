@@ -10,9 +10,9 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
-<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon-2.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192-2.png">
+<link rel="manifest" href="manifest-2.webmanifest">
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Forum&display=swap">
@@ -714,11 +714,11 @@ async function webLoginPoll(){if(!webGate()||!WL.secret||WL.polling||WL.err)retu
   }catch(e){}WL.polling=false;}
 /* на iPhone значок «Домой» и Safari помнят вход раздельно — в Safari сначала предлагаем поставить значок, чтобы входить один раз */
 const IOS_TAB=/iPhone|iPad|iPod/.test(navigator.userAgent)&&navigator.standalone!==true&&!(window.matchMedia&&matchMedia('(display-mode: standalone)').matches);
-function webLoginHTML(){if(IOS_TAB&&lsGet('wedding-webtab')!=='1')return '<section class="hero" style="text-align:center"><img src="apple-touch-icon.png" alt="" width="84" height="84" style="border-radius:20px;display:block;margin:0 auto 10px;position:relative"><div class="names">Наша свадьба</div><div class="when">Поставьте планер значком на экран — и открывайте его как обычное приложение.</div></section>'+
+function webLoginHTML(){if(IOS_TAB&&lsGet('wedding-webtab')!=='1')return '<section class="hero" style="text-align:center"><img src="apple-touch-icon-2.png" alt="" width="84" height="84" style="border-radius:20px;display:block;margin:0 auto 10px;position:relative"><div class="names">Наша свадьба</div><div class="when">Поставьте планер значком на экран — и открывайте его как обычное приложение.</div></section>'+
    '<section class="card"><ol style="margin:0;padding-left:22px;line-height:1.6"><li>Внизу Safari нажмите «Поделиться» — квадрат со стрелкой вверх.</li><li>Выберите «На экран „Домой“» → «Добавить».</li><li>Откройте новый значок и там нажмите «Войти через Telegram».</li></ol><p class="small muted" style="margin:10px 0 0">Входить нужно именно из значка: iPhone хранит вход значка и Safari отдельно.</p></section>'+
    '<p class="small muted" style="text-align:center"><button type="button" style="background:none;border:0;padding:0;font:inherit;color:var(--accent-ink);text-decoration:underline;cursor:pointer" data-act="webtab">Войти здесь, в Safari</button></p>';
   if(!WL.secret&&!WL.busy&&!WL.err)setTimeout(()=>webLoginInit(),0);const ok=WL.bot&&WL.code&&!WL.err;
-  return '<section class="hero" style="text-align:center"><img src="apple-touch-icon.png" alt="" width="84" height="84" style="border-radius:20px;display:block;margin:0 auto 10px;position:relative"><div class="names">Наша свадьба</div><div class="when">Войдите через Telegram — и здесь откроется общий планер: подрядчики, платежи, гости и чек-лист.</div></section>'+
+  return '<section class="hero" style="text-align:center"><img src="apple-touch-icon-2.png" alt="" width="84" height="84" style="border-radius:20px;display:block;margin:0 auto 10px;position:relative"><div class="names">Наша свадьба</div><div class="when">Войдите через Telegram — и здесь откроется общий планер: подрядчики, платежи, гости и чек-лист.</div></section>'+
    '<section class="card"><div class="stack" style="gap:14px">'+
    (WL.err?'<p class="small" style="margin:0;text-align:center">'+WL.err+'</p><button type="button" class="btn primary block" data-act="webretry" style="min-height:52px">Повторить</button>'
     :ok?'<a class="btn primary block" style="text-decoration:none;min-height:52px;justify-content:center" href="tg://resolve?domain='+esc(WL.bot)+'&appname='+WEB_APPNAME+'&startapp=web_'+WL.code+'">Войти через Telegram</a>'+
